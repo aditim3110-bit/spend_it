@@ -1,0 +1,45 @@
+name: backend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    paths: ["backend/**", "fixtures/**", ".github/workflows/backend.yml"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      db:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: spendit
+          POSTGRES_PASSWORD: spendit
+          POSTGRES_DB: spendit
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U spendit -d spendit"
+          --health-interval 2s --health-timeout 3s --health-retries 15
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s --health-timeout 3s --health-retries 15
+    env:
+      SPENDIT_ENV: test
+      SPENDIT_DATABASE_URL: postgresql+asyncpg://spendit:spendit@localhost:5432/spendit
+      SPENDIT_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.8"
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run alembic upgrade head
+      - run: uv run pytest

@@ -1,0 +1,30 @@
+# Local development services. Start with: docker compose up -d db redis
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: spendit
+      POSTGRES_PASSWORD: spendit   # local-only password; never used outside your laptop
+      POSTGRES_DB: spendit
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U spendit -d spendit"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  pgdata:

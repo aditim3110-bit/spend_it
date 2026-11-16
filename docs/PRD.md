@@ -208,7 +208,14 @@ The fourth case is the "X paid for me" case. These shortcuts are purely a UI lay
 \text{base}_i = \left\lfloor \frac{A \cdot w_i}{\sum_j w_j} \right\rfloor,\qquad r = A - \sum_i \text{base}_i,\qquad \text{owed}_i = \text{base}_i + [\,i \text{ is among the } r \text{ largest fractional remainders}\,]
 ```
 
-Ties on the fractional remainder are broken deterministically by participant ID so the same input always produces the same output on every platform. Example: S$100.00 split equally three ways → 3334, 3333, 3333; the extra cent goes to the participant whose ID sorts first, and the UI shows it ("Aditi pays 1¢ more").
+Ties on the fractional remainder are broken deterministically so the same input always produces the same output on every platform:
+
+1. **The payer first.** If the expense has exactly one payer and that payer is among the tied participants, the payer receives the extra minor unit. The person covering the bill absorbs the rounding, so friends never owe a cent they didn't cause.
+2. **Then by participant ID.** Any remaining ties (and every tie when there are several payers, or when the payer is not a participant) go to participants in ascending ID order. IDs are compared as lowercase canonical strings, byte by byte.
+
+Payer priority only breaks exact ties; it never overrides a larger fractional remainder. Because each participant receives at most one extra unit, the payer never absorbs more than one minor unit per expense.
+
+Examples: S$100.00 split equally three ways, paid by Ben → Ben 3334, the others 3333 each; the UI shows it ("Ben pays 1¢ more"). S$2.00 split equally three ways, paid by Ben → base 66 each with 2 cents left over: Ben gets one, and the other goes to whichever of the remaining two has the lower ID.
 
 **Net effect per expense.** For each person, `net_i = paid_i − owed_i`. Positive means the expense made others owe them; negative means they owe. The sum of all `net_i` within an expense is zero by construction, which is the invariant the nightly audit checks across every expense and every group.
 
