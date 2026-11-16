@@ -1,6 +1,6 @@
 # SpendIt — Master PRD
 
-Nov 12, 2026 · @pranav
+Nov 12, 2026
 
 ## 1. Executive summary & product vision
 
