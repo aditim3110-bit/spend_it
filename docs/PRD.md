@@ -158,7 +158,7 @@ A user is identified by at least one verified contact point — an E.164 phone n
 **Contact matching (how friends find each other)**
 
 - With permission, the app uploads SHA-256 hashes of the user's address-book phone numbers and emails (normalised to E.164 / lowercase) and the server returns which hashes match existing users. Raw contacts never leave the device, and the hashes are not stored server-side beyond the request.
-- A friend relationship is implicit: anyone you have shared an expense with appears in your Friends list. There is no friend-request step; it is friction with no safety benefit when the first interaction is a shared bill.
+- A friend relationship is implicit: anyone you have shared an expense with appears in your Friends list. People can also connect explicitly by QR code or "Add nearby" (Section 6A). There is no friend-request step for QR codes; it is friction with no safety benefit when the first interaction is a shared bill.
 
 **Recovery and edge cases**
 
@@ -171,6 +171,34 @@ A user is identified by at least one verified contact point — an E.164 phone n
 - Tables: `users`, `user_identifiers (user_id, kind: phone|email, value_normalised, verified_at, is_primary)`, `devices`, `refresh_tokens`.
 - FastAPI dependency `current_user()` validates the JWT and loads the user once per request; all routers depend on it except `/auth/*` and `/guest/*`.
 - iOS: phone entry uses `PhoneNumberKit` for formatting and validation; OTP field supports SMS autofill (`textContentType = .oneTimeCode`).
+
+## 6A. Adding friends: QR code and "Add nearby"
+
+Adding someone you're with should take one tap: scan their QR code, or, if you're sitting together, pick them from an "Add nearby" list over Bluetooth. Both create the same friend connection.
+
+Friends also still appear automatically once you share an expense (Section 6) or match through contacts. This section adds an explicit way to connect *before* the first expense, for example at the start of a trip.
+
+**QR code (Phase 1)**
+
+- Every user has a personal QR code under Friends → "My code", showing their first name and photo. It encodes a link, `https://spendit.app/u/<code>`, where `<code>` is a random 128-bit value. It is stored as-is, since it's meant to be shared like a username; "Reset my code" is the protection.
+- **Scanning connects instantly.** Showing your code is the consent, since you only show it to someone in front of you. Both people see each other in Friends straight away. No request or approval step, as in LINE and Telegram.
+- Scanning works from the in-app scanner (Friends → "Scan") or the iPhone Camera. The link is a Universal Link, so it opens SpendIt directly. Without the app installed, it opens a small web page showing the person's first name and an App Store link, with no phone, email or other details. After installing and signing up, the connection completes.
+- **Reset my code.** If a screenshot of the code spreads, the user taps "Reset my code": the old code stops working immediately and existing friends are unaffected. This is the same as WhatsApp's "Reset QR code".
+- Scanning your own code shows a friendly error. Scanning someone you're already friends with simply opens their profile. Connect attempts are rate-limited (30 per user per hour).
+
+**Add nearby (Phase 2, with the other Bluetooth features)**
+
+- Both people open Friends → "Add nearby". While the screen is open (up to 5 minutes), each phone advertises a rotating anonymous Bluetooth token using the same machinery as Section 12, and scans for others.
+- **Only people who also have "Add nearby" open are shown**, and only their first name and photo. This is the one place SpendIt shows people who aren't friends yet. It's limited to this screen, so leaving it makes you invisible again, and the participant detection in Section 12 still never shows strangers.
+- **Tap, then the other person confirms.** Aditi taps Ben, and Ben's phone shows "Aditi wants to add you" with Accept / Decline. On Accept they become friends. A request expires when either person leaves the screen. If Ben declines, Aditi just sees that the request wasn't accepted, with no reason given. This follows the norm for adding nearby strangers (e.g. Snapchat "Add Nearby").
+- Bluetooth permission is requested the first time someone opens the screen, with a plain-language explanation. If Bluetooth is off or nobody is found, the screen offers "Show my QR code" instead.
+- Tokens and sightings follow Section 12's rules: rotating every 15 minutes, resolved only for the request, deleted after 24 hours.
+
+**Friend list rules**
+
+- A friend connection is mutual: one row per pair.
+- Removing a friend deletes the connection. People you still share expenses or balances with keep appearing where the money is, because money facts aren't hidden, but they are no longer suggested.
+- Implementation: `friendships (user_a, user_b, source: qr|nearby|contacts|expense, created_at)` with `user_a < user_b` and one row per pair; `user_qr_codes (user_id, code, created_at, revoked_at)`; Phase 2 adds `nearby_sessions` and `nearby_requests`.
 
 ## 7. Core ledger: expense model & split math
 
@@ -374,6 +402,8 @@ When a user opens "Add expense", their phone briefly advertises a rotating anony
 - Tokens, RSSI and resolutions are retained for 24 hours for debugging, then deleted. Only the aggregate acceptance rates persist.
 - A user can hide from detection while still detecting others ("ghost mode"), and can see which people their phone detected in any given expense.
 - App Store review note: the `NSBluetoothAlwaysUsageDescription` string must describe this exact purpose; background modes must be justified in the review notes.
+
+**Adding new friends nearby** is a separate, explicit screen with its own consent step; see Section 6A. The detection described here never shows strangers.
 
 **Fallbacks.** No Bluetooth or no detections: the participant picker opens pre-filled from the group's usual set (the per-group model above), so the feature degrades gracefully to a smart default rather than to nothing.
 
@@ -586,6 +616,9 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 | `activity_events` | actor, verb, object\_type, object\_id, context, payload, created\_at | Drives feeds and notifications |
 | `idempotency_keys` | key, user\_id, request\_hash, response\_json, expires\_at | 24-hour replay |
 | `feature_flags` | key, rollout\_pct, allowlist | Read on launch |
+| `friendships` | user\_a, user\_b, source (qr/nearby/contacts/expense), created\_at | Section 6A. One row per pair, user\_a < user\_b |
+| `user_qr_codes` | user\_id, code (unique), created\_at, revoked\_at | Section 6A. One active code per user; reset revokes the old one |
+| `nearby_sessions`, `nearby_requests` | user, token, expires\_at; from, to, status (pending/accepted/declined/expired) | Section 6A, Phase 2 |
 
 **Invariants enforced in the database or the service layer**
 
@@ -605,6 +638,7 @@ One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` re
 | --- | --- | --- |
 | Auth | `POST /auth/otp/send`, `POST /auth/otp/verify`, `POST /auth/apple`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/identifiers`, `DELETE /auth/identifiers/{id}` | Rate-limited by identifier and IP |
 | Users | `GET/PATCH /me`, `POST /me/contacts/match`, `GET /friends` | Contact match takes hashes only |
+| Friends | `GET /me/qr`, `POST /me/qr/reset`, `POST /friends/connect` (scanned code), `DELETE /friends/{id}`, `GET /u/{code}` (web page); Phase 2: `POST /friends/nearby/sessions`, `POST /friends/nearby/requests`, `POST /friends/nearby/requests/{id}/accept`, `.../decline` | Section 6A. Connect is rate-limited |
 | Groups | `POST /groups`, `GET /groups`, `GET/PATCH /groups/{id}`, `POST /groups/{id}/members`, `DELETE /groups/{id}/members/{pid}`, `POST /groups/{id}/invites`, `POST /invites/{token}/accept`, `POST /groups/{id}/archive` | Leave blocked while balance non-zero (409) |
 | Expenses | `POST /expenses`, `GET /expenses?context=...&cursor=...`, `GET /expenses/{id}`, `PUT /expenses/{id}` (new revision), `DELETE /expenses/{id}`, `POST /expenses/{id}/restore`, `POST /expenses/{id}/move`, `GET /expenses/{id}/revisions` | Body carries payers, split mode and inputs; server returns computed shares |
 | Split preview | `POST /split/preview` | Pure function, no persistence; used by clients for live editors |
@@ -690,9 +724,9 @@ Bands are in order, not to scale; the diamonds are the exit gates, and the highl
 
 **Phase 0 — Foundations (about 6 weeks).** Backend skeleton, auth with phone and email OTP, Sign in with Apple, split engine with the shared fixture suite, Postgres schema and migrations, CI with property tests, TestFlight pipeline, design system in SwiftUI. *Gate:* split engine passes 100% of fixtures on both platforms; auth end-to-end on TestFlight.
 
-**Phase 1 — iOS launch, core ledger (about 10 weeks).** Expenses with all split modes and two-person shortcuts, groups, balances with simplification, record settlement, PayNow and UPI deep-link settlement, guest links with OTP and simple (non-itemised) shares, activity feed and push, offline queue, move expenses between contexts, account export and delete. Soft launch to a closed Singapore cohort, then App Store. *Gate:* nightly audit clean for 14 consecutive days; crash-free sessions above 99.5%; median manual entry under 12 s in the cohort.
+**Phase 1 — iOS launch, core ledger (about 10 weeks).** Expenses with all split modes and two-person shortcuts, groups, balances with simplification, record settlement, PayNow and UPI deep-link settlement, guest links with OTP and simple (non-itemised) shares, activity feed and push, offline queue, move expenses between contexts, account export and delete. Soft launch to a closed Singapore cohort, then App Store. Adding friends by QR code (Section 6A). *Gate:* nightly audit clean for 14 consecutive days; crash-free sessions above 99.5%; median manual entry under 12 s in the cohort.
 
-**Phase 2 — Effortless entry (about 10 weeks, overlapping Phase 1 beta).** Receipt scan and itemisation, collaborative claim sessions with realtime, itemised guest claiming, voice entry with the evaluation harness, Bluetooth proximity behind a feature flag to 10% then 100%, and the zero-setup "Add to SpendIt" outing nudge (Section 15A). *Gate:* receipt reconcile rate above 90%; voice amount/payer accuracy above 95%; proximity suggestion acceptance above 70% without degrading entry time.
+**Phase 2 — Effortless entry (about 10 weeks, overlapping Phase 1 beta).** Receipt scan and itemisation, collaborative claim sessions with realtime, itemised guest claiming, voice entry with the evaluation harness, Bluetooth proximity behind a feature flag to 10% then 100%, and the zero-setup "Add to SpendIt" outing nudge (Section 15A). "Add nearby" over Bluetooth (Section 6A), behind the same feature flag as proximity. *Gate:* receipt reconcile rate above 90%; voice amount/payer accuracy above 95%; proximity suggestion acceptance above 70% without degrading entry time.
 
 **Phase 3 — Wallet (timing depends on partner; target 4–6 months after Phase 1).** Partner integration, KYC, top-up, settle, withdraw, auto-settle opt-in, reconciliation, freeze, penetration test, MAS-compliant disclosures. Singapore only at first. *Gate:* 30 days of reconciliation with zero unexplained variance in a closed beta; legal sign-off.
 
