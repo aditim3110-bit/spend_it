@@ -26,11 +26,13 @@ from app.core.errors import ProblemError
 from app.core.split_errors import split_problem
 from app.models import Expense, FriendSource, User
 from app.models.expense import RevisionReason, SplitModeDb
+from app.repositories import balances as balance_repo
 from app.repositories import expenses as repo
 from app.repositories import friends as friend_repo
 from app.repositories import users as user_repo
 from app.repositories.expenses import RevisionData, RevisionRows
 from app.schemas.expenses import ExpenseIn, ExpenseStatus
+from app.services.balances import data_deltas, merge, rows_deltas
 from app.services.split_engine import (
     Payer,
     ShareInput,
@@ -73,6 +75,7 @@ class ExpenseService:
         people = data.people()
         await self._check_people(user, people, already_on=set())
         expense = await repo.create(self._session, user.id, data)
+        await balance_repo.apply(self._session, data_deltas(expense, data, +1))
         await self._befriend(people, newly_added=people)
         await self._session.commit()
         return await self._view(expense.id)
@@ -91,21 +94,26 @@ class ExpenseService:
         await repo.add_revision(
             self._session, expense, user.id, current.revision.rev_no + 1, RevisionReason.EDIT, data
         )
+        # Take the old version out of the balances and put the new one in, as one change.
+        await balance_repo.apply(
+            self._session, merge(rows_deltas(current, -1), data_deltas(expense, data, +1))
+        )
         await self._befriend(people, newly_added=people - before)
         await self._session.commit()
         return await self._view(expense.id)
 
     async def delete(self, user: User, expense_id: uuid.UUID) -> None:
         """Soft delete. Deleting an already deleted expense succeeds and changes nothing."""
-        expense, _ = await self._for_change(user, expense_id)
+        expense, current = await self._for_change(user, expense_id)
         if expense.deleted_at is None:
             await repo.set_deleted(self._session, expense, datetime.now(UTC), user.id)
+            await balance_repo.apply(self._session, rows_deltas(current, -1))
         await self._session.commit()
 
     async def restore(self, user: User, expense_id: uuid.UUID) -> ExpenseView:
         """Undo a delete within 30 days. Restoring a live expense succeeds and changes
         nothing."""
-        expense, _ = await self._for_change(user, expense_id)
+        expense, current = await self._for_change(user, expense_id)
         if expense.deleted_at is not None:
             if datetime.now(UTC) - expense.deleted_at > RESTORE_WINDOW:
                 raise ProblemError(
@@ -114,6 +122,7 @@ class ExpenseService:
                     "Deleted expenses can only be restored for 30 days.",
                 )
             await repo.set_deleted(self._session, expense, None, None)
+            await balance_repo.apply(self._session, rows_deltas(current, +1))
         await self._session.commit()
         return await self._view(expense.id)
 

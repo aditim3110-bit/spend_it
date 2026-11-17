@@ -176,7 +176,7 @@ A user is identified by at least one verified contact point — an E.164 phone n
 
 Adding someone you're with should take one tap: scan their QR code, or, if you're sitting together, pick them from an "Add nearby" list over Bluetooth. Both create the same friend connection.
 
-Friends also still appear automatically once you share an expense (Section 6) or match through contacts. This section adds an explicit way to connect *before* the first expense, for example at the start of a trip.
+Friends also still appear automatically once you share an expense (Section 6), join the same group (Section 9) or match through contacts. This section adds an explicit way to connect *before* the first expense, for example at the start of a trip.
 
 **QR code (Phase 1)**
 
@@ -206,7 +206,7 @@ Friends also still appear automatically once you share an expense (Section 6) or
 
 - A friend connection is mutual: one row per pair.
 - Removing a friend deletes the connection. People you still share expenses or balances with keep appearing where the money is, because money facts aren't hidden, but they are no longer suggested.
-- Implementation: `friendships (user_a, user_b, source: qr|phone_email|nearby|contacts|expense, created_at)` with `user_a < user_b` and one row per pair; `user_qr_codes (user_id, code, created_at, revoked_at)`; Phase 2 adds `nearby_sessions` and `nearby_requests`.
+- Implementation: `friendships (user_a, user_b, source: qr|phone_email|nearby|contacts|expense|group, created_at)` with `user_a < user_b` and one row per pair; `user_qr_codes (user_id, code, created_at, revoked_at)`; Phase 2 adds `nearby_sessions` and `nearby_requests`.
 
 ## 7. Core ledger: expense model & split math
 
@@ -290,14 +290,27 @@ A balance is the sum of per-expense net effects between two people in one curren
 **Balance computation**
 
 - Pairwise balance in a context (a group, or the direct relationship) = sum over all live expense revisions of `net` between the pair, per currency. SpendIt never silently converts currencies into one balance; a trip with SGD and THB expenses shows two lines, with an optional "show in SGD" toggle using an indicative rate (clearly labelled).
-- Balances are materialised in a `balances` table updated transactionally with every expense write, and rebuilt from scratch by the nightly audit job. If the audit disagrees with the materialised value, it alerts and repairs.
+- **Who owes whom within one expense.** Only people who are short (owe more than they paid) pay, and they pay the people who are out of pocket (paid more than they owe). With one payer, everyone simply owes the payer their share. With several payers, each short person's debt is spread across the out-of-pocket people in proportion to what each is still owed. Example: a S$300 hotel split three ways, Aditi paid S$200 and Ben S$100: Chen owes Aditi S$100, and Ben is square. Fractions of a cent use the same largest-remainder rounding as splits (ties by ID), so every amount is exact. This lives in the split engine (`pairwise_debts`).
+- Balances are materialised in a `balances` table updated transactionally with every expense write (create adds the expense, edit swaps the old version for the new, delete takes it out, restore puts it back), and rebuilt from scratch by the nightly audit job (`python -m app.jobs.audit`). If the audit disagrees with the materialised value, it alerts and repairs. If it finds a revision that doesn't balance (impossible through the app), it alerts and changes nothing, so a person investigates.
 - The home screen shows: total you are owed, total you owe (per currency), then per-friend and per-group lines.
 
-**Debt simplification (group setting, on by default)**
+**Smart Settle (debt simplification; group setting, on by default)**
 
-- Within a group, raw pairwise debts can form chains (A owes B 10, B owes C 10). Simplification computes each member's overall net position and produces the minimum set of transfers that settles everyone: sort debtors and creditors, greedily match the largest debtor to the largest creditor, repeat. This is Splitwise's behaviour and users expect it.
+- The switch is called **Smart Settle** in the app, with the subtitle "Settle up with fewer transfers. Everyone still pays or gets back exactly the same total."
+- Within a group, raw pairwise debts can form chains (A owes B 10, B owes C 10). Smart Settle turns that into one payment, A pays C 10. Simplification computes each member's overall net position and produces the minimum set of transfers that settles everyone: sort debtors and creditors, greedily match the largest debtor to the largest creditor, repeat. This is Splitwise's behaviour and users expect it.
 - Simplification never changes anyone's net position; it only changes who pays whom. The UI makes this explicit ("You owe Ravi S$10 instead of Aditi because Aditi owes Ravi").
-- A group admin can turn it off (some groups prefer to track exactly who paid for whom). Direct (non-group) balances are never simplified across friends.
+- **Only between friends.** A transfer is only rerouted to someone the payer is friends with. Group members become friends when they join (Section 9), so this normally holds; it matters only if someone has removed a friend, in which case that pair is never told to pay each other and the debts route around them.
+- A group admin can turn it off (some groups prefer to track exactly who paid for whom). Then each member pays exactly who they owe.
+- **Groups only.** Debts outside groups are never simplified, even when one expense was shared by three friends without a group: each pair settles directly (Aditi pays Ben, Ben pays Chen). Decided 2026-11-17.
+
+**One payment per person, across everything (decided 2026-11-17)**
+
+- What you pay someone is everything between the two of you, netted into one amount per currency: for each group, what that group says you owe them (the Smart Settle transfer when it's on, the plain pairwise debt when it's off), plus your direct (outside-group) balance with them.
+- Example: in a group, Smart Settle says Aditi pays Chen S$10; outside groups, Chen owes Aditi S$10. Net S$0: they're already square and the app says so. If Chen owed Aditi only S$8 outside, Aditi pays Chen S$2: one real payment.
+- **How it's recorded.** The one real payment is recorded as one settlement per context the debt lived in, so each context shows settled and every context still sums to zero: "Aditi paid Chen S$10" in the group and "Chen paid Aditi S$8" directly. These are bookkeeping entries of a single transfer (Splitwise does the same). They are linked as one payment, and the activity feed shows them as one item: "Aditi paid Chen S$2 (settles S$10 in Bali trip and S$8 between you)".
+- Only the same currency nets; SGD and THB debts never cancel each other.
+- It is per pair: it nets what two people owe each other and never brings in a third person outside a group, so Smart Settle stays groups-only.
+- The per-person lines on the home screen (`GET /balances`) show this netted amount, and the group part uses the Smart Settle transfers once groups exist.
 
 **Settlement methods at launch (before the Wallet ships)**
 
@@ -339,7 +352,8 @@ A group is a named container with a member list, a default currency and a defaul
 
 **Requirements**
 
-- Create with name, optional cover emoji or photo, type (trip, home, couple, event, other — the type only changes defaults and the suggested icon), default currency, and whether debt simplification is on.
+- Create with name, optional cover emoji or photo, type (trip, home, couple, event, other — the type only changes defaults and the suggested icon), default currency, and whether Smart Settle (Section 8) is on (default on).
+- **Joining a group makes you friends with its members.** When someone is added to a group (or joins by invite), they become friends with every current member they weren't already friends with (friendship source `group`). Groups are never required: three friends can share an expense directly without one (Section 7).
 - Add members from Friends, from contacts (hash match), by sharing an invite link, or as an unnamed guest spot that the guest fills in with their own name (Section 15). Invite links are revocable and can be set to require admin approval.
 - Roles: creator is admin; admins can add or remove members, change settings, archive the group. Any member can add and edit expenses.
 - A member can only leave when their balance in the group is zero; otherwise they are prompted to settle first (same rule as Splitwise, and it prevents orphaned debts).
@@ -643,7 +657,7 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 | `expense_revisions` | id, expense\_id, rev\_no, context\_type, group\_id, name, amount\_minor, currency, expense\_date, split\_mode, notes, receipt\_id, created\_by, created\_at, reason (create/edit/move) | Immutable. Context is recorded per revision so a move keeps its history (Section 10); `expenses.context_type/group_id` mirror the current revision |
 | `expense_payers` | revision\_id, user\_id or guest\_id, amount\_minor | Sum = amount |
 | `expense_shares` | revision\_id, user\_id or guest\_id, owed\_minor, input\_value (for exact/percent/shares) | Sum = amount |
-| `balances` | context\_type, group\_id, party\_a, party\_b, currency, amount\_minor | Materialised; a < b ordering; rebuilt nightly |
+| `balances` | context\_type, group\_id, party\_a, party\_b, currency, amount\_minor | Materialised; a < b ordering; positive amount means b owes a; rebuilt nightly |
 | `receipts`, `receipt_items` | see Section 14 | Parsed JSON kept for re-processing |
 | `claim_sessions`, `claims` | see Section 14 | Realtime claim state |
 | `voice_drafts` | user\_id, transcript, draft\_json, outcome (confirmed/edited/discarded), created\_at | Training and evaluation data, consent-gated |
@@ -653,7 +667,7 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 | `idempotency_keys` | key, user\_id, request\_hash, response\_json, expires\_at | 24-hour replay |
 | `feature_flags` | key, rollout\_pct, allowlist | Read on launch |
 | `phone_number_requests`, `phone_number_shares` | requester, recipient, amount, status; owner, viewer, shared\_at, revoked\_at | Section 8. Shared only per request, revocable. The saved number is `users.payment_phone` |
-| `friendships` | user\_a, user\_b, source (qr/phone\_email/nearby/contacts/expense), created\_at | Section 6A. One row per pair, user\_a < user\_b |
+| `friendships` | user\_a, user\_b, source (qr/phone\_email/nearby/contacts/expense/group), created\_at | Section 6A. One row per pair, user\_a < user\_b |
 | `user_qr_codes` | user\_id, code (unique), created\_at, revoked\_at | Section 6A. One active code per user; reset revokes the old one |
 | `nearby_sessions`, `nearby_requests` | user, token, expires\_at; from, to, status (pending/accepted/declined/expired) | Section 6A, Phase 2 |
 
@@ -679,7 +693,7 @@ One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` re
 | Groups | `POST /groups`, `GET /groups`, `GET/PATCH /groups/{id}`, `POST /groups/{id}/members`, `DELETE /groups/{id}/members/{pid}`, `POST /groups/{id}/invites`, `POST /invites/{token}/accept`, `POST /groups/{id}/archive` | Leave blocked while balance non-zero (409) |
 | Expenses | `POST /expenses`, `GET /expenses?friend_id=...&status=live\|deleted&cursor=...`, `GET /expenses/{id}`, `PUT /expenses/{id}` (new revision; the last save wins), `DELETE /expenses/{id}`, `POST /expenses/{id}/restore`, `POST /expenses/{id}/move`, `GET /expenses/{id}/revisions` | Body carries payers, split mode and inputs; server returns computed shares. The list is newest expense date first; `status=deleted` lists those still restorable (30 days). Group filters arrive with groups |
 | Split preview | `POST /split/preview` | Pure function, no persistence; used by clients for live editors |
-| Balances | `GET /balances`, `GET /balances/friends/{id}`, `GET /groups/{id}/balances?simplified=true` | Per currency |
+| Balances | `GET /balances`, `GET /balances/friends/{id}`, `GET /groups/{id}/balances?simplified=true` | Per currency; positive means they owe you. `GET /balances` is a summary with totals, so it isn't paginated |
 | Settlements | `POST /settlements` (record), `POST /settlements/paynow-intent`, `POST /settlements/{id}/confirm`, `POST /settlements/{id}/dispute` | Wallet variant added in Phase 2 |
 | Phone number requests | `POST /phone-requests`, `POST /phone-requests/{id}/share` (confirm or change the number), `POST /phone-requests/{id}/decline`, `GET /friends/{id}/phone`, `DELETE /me/phone-shares/{viewer_id}` | Section 8. Only people the owner shared with can read it |
 | Reminders | `POST /balances/{pair}/remind` | 72-hour cooldown |

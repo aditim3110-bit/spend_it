@@ -2,6 +2,7 @@
 
 from app.services.split_engine.engine import compute_split
 from app.services.split_engine.errors import SplitError
+from app.services.split_engine.pairwise import pairwise_debts
 from app.services.split_engine.shortcuts import TwoPersonShortcut, two_person
 from app.services.split_engine.types import (
     Payer,
@@ -22,5 +23,6 @@ __all__ = [
     "SplitResult",
     "TwoPersonShortcut",
     "compute_split",
+    "pairwise_debts",
     "two_person",
 ]

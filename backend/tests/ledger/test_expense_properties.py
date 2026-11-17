@@ -8,7 +8,9 @@ rules that must hold however the expenses were made:
 - what's stored is exactly what the split engine computes from the stored inputs (the
   server decides, and it's reproducible: balances can be rebuilt from revisions);
 - revision numbers run 1, 2, 3... and the expense points at the newest one;
-- the current state matches a simple in-memory model of what should have happened.
+- the current state matches a simple in-memory model of what should have happened;
+- the balances table equals a rebuild from scratch, and each person's balances add up to
+  the sum of what they paid minus what they owe across live expenses (PRD section 8).
 
 Each sequence runs inside a transaction that is rolled back, so nothing is left behind.
 """
@@ -27,8 +29,10 @@ from sqlalchemy.pool import NullPool
 
 from app.core.errors import ProblemError
 from app.models import FriendSource, User
+from app.repositories import balances as balance_repo
 from app.repositories import friends as friend_repo
 from app.schemas.expenses import ExpenseIn
+from app.services.balances import expected_from_ledger
 from app.services.expenses import ExpenseService
 from app.services.split_engine import Payer, ShareInput, SplitMode, SplitRequest, compute_split
 from tests.support.database import TEST_DATABASE_URL
@@ -261,6 +265,37 @@ async def _check_invariants(
         assert view.current.revision.amount_minor == exp.amount
         assert (view.expense.deleted_at is not None) == exp.deleted
         assert {index[u] for u in view.current.people()} == exp.people
+
+    await _check_balances(session, users)
+
+
+async def _check_balances(session: AsyncSession, users: list[User]) -> None:
+    table = await balance_repo.all_nonzero(session)
+    assert table == await expected_from_ledger(session)
+
+    # Each person's balances, from their side, add up to their net position per currency.
+    from_balances: dict[tuple[uuid.UUID, str], int] = {}
+    for key, amount in table.items():  # positive: b owes a
+        a, b = key.party_a, key.party_b
+        from_balances[(a, key.currency)] = from_balances.get((a, key.currency), 0) + amount
+        from_balances[(b, key.currency)] = from_balances.get((b, key.currency), 0) - amount
+    nets = (
+        await session.execute(
+            text(
+                "SELECT who, currency, sum(amount) FROM ("
+                "  SELECT p.user_id who, r.currency, p.amount_minor amount"
+                "  FROM expenses e JOIN expense_revisions r ON r.id = e.current_revision_id"
+                "  JOIN expense_payers p ON p.revision_id = r.id WHERE e.deleted_at IS NULL"
+                "  UNION ALL"
+                "  SELECT s.user_id, r.currency, -s.owed_minor"
+                "  FROM expenses e JOIN expense_revisions r ON r.id = e.current_revision_id"
+                "  JOIN expense_shares s ON s.revision_id = r.id WHERE e.deleted_at IS NULL"
+                ") x GROUP BY who, currency"
+            )
+        )
+    ).all()
+    from_ledger = {(who, cur): int(total) for who, cur, total in nets if total}
+    assert {k: v for k, v in from_balances.items() if v} == from_ledger
 
 
 @settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
