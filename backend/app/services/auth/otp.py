@@ -16,6 +16,7 @@ from typing import Protocol
 
 from redis.asyncio import Redis
 
+from app.core import rate_limit
 from app.core.errors import ProblemError
 from app.models.user import IdentifierKind
 
@@ -73,8 +74,21 @@ class OtpService:
 
     async def send(self, kind: IdentifierKind, destination: str, ip: str) -> None:
         ident = self._hash(destination)
-        await self._rate_limit(f"otp:ip:{self._hash(ip)}", SENDS_PER_IP_PER_HOUR)
-        await self._rate_limit(f"otp:sends:{ident}", SENDS_PER_IDENTIFIER_PER_HOUR)
+        too_many = "Too many codes requested. Please wait and try again."
+        await rate_limit.hit(
+            self._redis,
+            f"otp:ip:{self._hash(ip)}",
+            SENDS_PER_IP_PER_HOUR,
+            WINDOW_SECONDS,
+            too_many,
+        )
+        await rate_limit.hit(
+            self._redis,
+            f"otp:sends:{ident}",
+            SENDS_PER_IDENTIFIER_PER_HOUR,
+            WINDOW_SECONDS,
+            too_many,
+        )
 
         code = f"{secrets.randbelow(10**6):06d}"
         key = f"otp:code:{ident}"
@@ -108,21 +122,6 @@ class OtpService:
                 errors=[{"attempts_left": left}],
             )
         await self._redis.delete(key)  # each code works once
-
-    async def _rate_limit(self, key: str, limit: int) -> None:
-        async with self._redis.pipeline(transaction=True) as pipe:
-            pipe.incr(key)
-            pipe.expire(key, WINDOW_SECONDS, nx=True)  # window starts at the first request
-            pipe.ttl(key)
-            count, _, ttl = await pipe.execute()
-        if count > limit:
-            retry_after = max(int(ttl), 1)
-            raise ProblemError(
-                429,
-                "too-many-requests",
-                "Too many codes requested. Please wait and try again.",
-                headers={"Retry-After": str(retry_after)},
-            )
 
 
 def _expired() -> ProblemError:

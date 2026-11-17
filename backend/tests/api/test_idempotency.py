@@ -9,7 +9,7 @@ import pytest
 from fastapi import APIRouter, Depends, Response
 
 from app.api.deps import CurrentUser
-from app.core.idempotency import idempotency_key_header
+from app.core.idempotency import EXEMPT_PATHS, idempotency_key_header
 from app.main import create_app
 from tests.support.api import Api, running_api
 
@@ -183,7 +183,7 @@ def test_every_change_route_declares_the_header_in_the_contract() -> None:
         for method, op in ops.items():
             if method.upper() not in {"POST", "PUT", "PATCH", "DELETE"}:
                 continue
-            if path.startswith("/v1/auth/") or path == "/v1/split/preview":
+            if path.startswith("/v1/auth/") or path in EXEMPT_PATHS:
                 continue
             names = {p["name"] for p in op.get("parameters", []) if p["in"] == "header"}
             if "Idempotency-Key" not in names:

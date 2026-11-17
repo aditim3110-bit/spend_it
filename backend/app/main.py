@@ -16,6 +16,7 @@ from app.core.errors import install_error_handlers
 from app.core.idempotency import IdempotencyMiddleware
 from app.db.session import make_engine, make_sessionmaker
 from app.services.auth.otp import ConsoleSender, OtpSender
+from app.web.routes import router as web_router
 
 
 def create_app(settings: Settings | None = None, otp_sender: OtpSender | None = None) -> FastAPI:
@@ -41,6 +42,7 @@ def create_app(settings: Settings | None = None, otp_sender: OtpSender | None = 
     install_error_handlers(app)
     app.add_middleware(IdempotencyMiddleware)
     app.include_router(v1_router)
+    app.include_router(web_router)
     return app
 
 

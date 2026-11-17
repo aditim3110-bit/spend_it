@@ -182,9 +182,17 @@ Friends also still appear automatically once you share an expense (Section 6) or
 
 - Every user has a personal QR code under Friends → "My code", showing their first name and photo. It encodes a link, `https://spendit.app/u/<code>`, where `<code>` is a random 128-bit value. It is stored as-is, since it's meant to be shared like a username; "Reset my code" is the protection.
 - **Scanning connects instantly.** Showing your code is the consent, since you only show it to someone in front of you. Both people see each other in Friends straight away. No request or approval step, as in LINE and Telegram.
-- Scanning works from the in-app scanner (Friends → "Scan") or the iPhone Camera. The link is a Universal Link, so it opens SpendIt directly. Without the app installed, it opens a small web page showing the person's first name and an App Store link, with no phone, email or other details. After installing and signing up, the connection completes.
+- Scanning works from the in-app scanner (Friends → "Scan") or the iPhone Camera. The link is a Universal Link, so it opens SpendIt directly. Without the app installed, it opens a small web page showing the person's first name and an App Store link, with no phone, email or other details. After installing and signing up, the person taps "Already have it? Open in SpendIt" on the same page (or scans again) to connect. Connecting automatically right after install ("deferred deep linking") would need a third-party attribution service, so it is left out. Universal Links need an `apple-app-site-association` file on spendit.app, added once the app's bundle ID exists.
 - **Reset my code.** If a screenshot of the code spreads, the user taps "Reset my code": the old code stops working immediately and existing friends are unaffected. This is the same as WhatsApp's "Reset QR code".
 - Scanning your own code shows a friendly error. Scanning someone you're already friends with simply opens their profile. Connect attempts are rate-limited (30 per user per hour).
+
+**Add by phone number or email (Phase 1, the fallback when QR isn't practical)**
+
+- Under Friends → "Add by phone or email", the user types a number or address. It is normalised the same way as at sign-in (Section 6), so "9123 4567" finds "+65 9123 4567".
+- **Check first:** if that number or email belongs to a SpendIt account, the app shows the person's first name and photo ("Aditi · on SpendIt"), so the user knows they typed the right person, as WhatsApp does. No surname, other identifiers or details are shown.
+- **Adding is instant, like Splitwise.** One tap makes them friends. The added person is notified ("Ben added you as a friend") and can remove Ben at any time. Unlike QR there's no in-person consent, but the same safeguards apply to everything friends can do: every expense notifies its participants and can be disputed (Section 7).
+- **Not on SpendIt yet:** the app says so and opens the user's own share sheet (WhatsApp, Messages, email) with an invite link. SpendIt never sends invites from its own number or address: it costs nothing, and SpendIt can't be used to spam strangers.
+- **Limits:** checks and adds together are limited to 30 per user per hour, so nobody can test numbers in bulk to find out who uses SpendIt.
 
 **Add nearby (Phase 2, with the other Bluetooth features)**
 
@@ -198,7 +206,7 @@ Friends also still appear automatically once you share an expense (Section 6) or
 
 - A friend connection is mutual: one row per pair.
 - Removing a friend deletes the connection. People you still share expenses or balances with keep appearing where the money is, because money facts aren't hidden, but they are no longer suggested.
-- Implementation: `friendships (user_a, user_b, source: qr|nearby|contacts|expense, created_at)` with `user_a < user_b` and one row per pair; `user_qr_codes (user_id, code, created_at, revoked_at)`; Phase 2 adds `nearby_sessions` and `nearby_requests`.
+- Implementation: `friendships (user_a, user_b, source: qr|phone_email|nearby|contacts|expense, created_at)` with `user_a < user_b` and one row per pair; `user_qr_codes (user_id, code, created_at, revoked_at)`; Phase 2 adds `nearby_sessions` and `nearby_requests`.
 
 ## 7. Core ledger: expense model & split math
 
@@ -290,8 +298,32 @@ A balance is the sum of per-expense net effects between two people in one curren
 **Settlement methods at launch (before the Wallet ships)**
 
 1. **Record a payment** — "I paid Aditi S$42.50 in cash". Creates a settlement expense; the counterparty is notified and can dispute within the activity feed.
-2. **PayNow / UPI deep link (Singapore and India)** — SpendIt generates a PayNow QR or `upi://pay` intent prefilled with the counterparty's registered proxy (mobile number) and the amount, opens the user's bank app, and on return asks "Did the payment go through?" to record it. No money touches SpendIt, so no licence is needed, and it already beats Splitwise in these markets.
+2. **Pay by phone number** (PayNow in Singapore, DuitNow in Malaysia, UPI-by-mobile in India and similar). The debtor copies the creditor's phone number, pays in their own bank or payment app, then returns and confirms "Did the payment go through?" to record it. No money touches SpendIt, so no licence is needed. Most friends already have each other's numbers; for those who don't, the number comes from the **"Request phone number"** flow below, never from sign-in details without asking.
 3. **Settle via Wallet** (Phase 2, Section 11) — instant, recorded automatically.
+
+**Request phone number (launch version, kept deliberately simple)**
+
+1. Aditi owes Ben and doesn't have his number. On Settle up she taps **"Request phone number"**.
+2. Ben gets: *"Aditi wants to pay you S$42.50. Share the phone number you receive payments on? Only Aditi will see it."* The purpose and the one person it goes to are always stated.
+3. The number is **pre-filled with Ben's registered sign-in phone**. He confirms *"This is the number we'll send to Aditi"*, or changes it.
+4. **If he changes it,** SpendIt asks *"Save this for future payments?"*.
+5. **If Ben signed up with email only,** there's nothing to pre-fill, so he is prompted to add his number "so friends can pay you".
+6. Ben can decline. Aditi then sees a neutral *"Ben hasn't shared a number. You can record a cash or other payment instead."*
+7. Once Ben shares, Aditi sees the number with a **Copy** button, pays in her own app, and records the payment.
+
+**Who can see it.** Only people Ben has shared it with through a request; never on his profile or to other friends. Once shared with Aditi, she sees it on future Settle-ups with Ben without asking again. Ben can stop sharing from his profile.
+
+**Limits.**
+- Only someone who currently owes Ben can request.
+- One pending request per pair at a time.
+- After a decline, the same person can't ask again for 7 days.
+
+**After launch, if users ask:** other payment types (bank account, UPI ID, PayPal and similar links) and a PayNow QR code with the amount filled in. These are deliberately left out of the first release.
+
+**Data.**
+- `users.payment_phone`: the saved number. It's separate from the sign-in phone, because someone may get paid on a different number.
+- `phone_number_requests (id, requester_id, recipient_id, amount_minor, currency, status: pending|shared|declined, created_at, responded_at)`.
+- `phone_number_shares (owner_id, viewer_id, shared_at, revoked_at)`.
 
 **Partial settlement and allocation.** A user can settle any amount up to the balance. Settlements reduce the net balance, not specific expenses, which keeps the model simple; a per-expense "paid" marker is deliberately out of scope.
 
@@ -596,7 +628,7 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 
 | Table | Key columns | Notes |
 | --- | --- | --- |
-| `users` | id, display\_name, avatar\_url, default\_currency, home\_country, created\_at | No credentials here |
+| `users` | id, display\_name, avatar\_url, default\_currency, home\_country, payment\_phone, created\_at | No credentials here. `payment_phone` is only shown via Request phone number (Section 8) |
 | `user_identifiers` | user\_id, kind (phone/email), value\_normalised (unique), verified\_at, is\_primary | One row per identifier; max one of each kind per user |
 | `devices` | user\_id, platform, apns\_token, last\_seen\_at | Push targets and session management |
 | `refresh_tokens` | id, user\_id, device\_id, family\_id, expires\_at, used\_at | Rotation with family revocation |
@@ -616,7 +648,8 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 | `activity_events` | actor, verb, object\_type, object\_id, context, payload, created\_at | Drives feeds and notifications |
 | `idempotency_keys` | key, user\_id, request\_hash, response\_json, expires\_at | 24-hour replay |
 | `feature_flags` | key, rollout\_pct, allowlist | Read on launch |
-| `friendships` | user\_a, user\_b, source (qr/nearby/contacts/expense), created\_at | Section 6A. One row per pair, user\_a < user\_b |
+| `phone_number_requests`, `phone_number_shares` | requester, recipient, amount, status; owner, viewer, shared\_at, revoked\_at | Section 8. Shared only per request, revocable. The saved number is `users.payment_phone` |
+| `friendships` | user\_a, user\_b, source (qr/phone\_email/nearby/contacts/expense), created\_at | Section 6A. One row per pair, user\_a < user\_b |
 | `user_qr_codes` | user\_id, code (unique), created\_at, revoked\_at | Section 6A. One active code per user; reset revokes the old one |
 | `nearby_sessions`, `nearby_requests` | user, token, expires\_at; from, to, status (pending/accepted/declined/expired) | Section 6A, Phase 2 |
 
@@ -632,18 +665,19 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 
 ## 17. API surface (FastAPI)
 
-One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` required on every POST, PUT, PATCH and DELETE (Section 5). The exceptions are the unauthenticated sign-in endpoints (`/auth/otp/*`, `/auth/apple`, `/auth/refresh`, `/auth/logout`): there is no user yet to scope a key to, and they are protected by OTP rate limits and refresh-token rotation instead, as is standard. `POST /split/preview` is also exempt: it is a pure calculation that changes nothing, and clients call it on every keystroke. FastAPI's generated OpenAPI spec is the contract from which the Swift client is generated.
+One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` required on every POST, PUT, PATCH and DELETE (Section 5). The exceptions are the unauthenticated sign-in endpoints (`/auth/otp/*`, `/auth/apple`, `/auth/refresh`, `/auth/logout`): there is no user yet to scope a key to, and they are protected by OTP rate limits and refresh-token rotation instead, as is standard. `POST /split/preview` and `POST /friends/lookup` are also exempt: they change nothing and are sent as POST only so the body (amounts, or a phone number) stays out of URLs and logs. FastAPI's generated OpenAPI spec is the contract from which the Swift client is generated.
 
 | Area | Endpoints | Notes |
 | --- | --- | --- |
 | Auth | `POST /auth/otp/send`, `POST /auth/otp/verify`, `POST /auth/apple`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/identifiers`, `DELETE /auth/identifiers/{id}` | Rate-limited by identifier and IP |
 | Users | `GET/PATCH /me`, `POST /me/contacts/match`, `GET /friends` | Contact match takes hashes only |
-| Friends | `GET /me/qr`, `POST /me/qr/reset`, `POST /friends/connect` (scanned code), `DELETE /friends/{id}`, `GET /u/{code}` (web page); Phase 2: `POST /friends/nearby/sessions`, `POST /friends/nearby/requests`, `POST /friends/nearby/requests/{id}/accept`, `.../decline` | Section 6A. Connect is rate-limited |
+| Friends | `GET /me/qr`, `POST /me/qr/reset`, `POST /friends/connect` (scanned code), `POST /friends/lookup`, `POST /friends/add` (phone or email), `DELETE /friends/{id}`, `GET /u/{code}` (web page); Phase 2: `POST /friends/nearby/sessions`, `POST /friends/nearby/requests`, `POST /friends/nearby/requests/{id}/accept`, `.../decline` | Section 6A. Connect is rate-limited |
 | Groups | `POST /groups`, `GET /groups`, `GET/PATCH /groups/{id}`, `POST /groups/{id}/members`, `DELETE /groups/{id}/members/{pid}`, `POST /groups/{id}/invites`, `POST /invites/{token}/accept`, `POST /groups/{id}/archive` | Leave blocked while balance non-zero (409) |
 | Expenses | `POST /expenses`, `GET /expenses?context=...&cursor=...`, `GET /expenses/{id}`, `PUT /expenses/{id}` (new revision), `DELETE /expenses/{id}`, `POST /expenses/{id}/restore`, `POST /expenses/{id}/move`, `GET /expenses/{id}/revisions` | Body carries payers, split mode and inputs; server returns computed shares |
 | Split preview | `POST /split/preview` | Pure function, no persistence; used by clients for live editors |
 | Balances | `GET /balances`, `GET /balances/friends/{id}`, `GET /groups/{id}/balances?simplified=true` | Per currency |
 | Settlements | `POST /settlements` (record), `POST /settlements/paynow-intent`, `POST /settlements/{id}/confirm`, `POST /settlements/{id}/dispute` | Wallet variant added in Phase 2 |
+| Phone number requests | `POST /phone-requests`, `POST /phone-requests/{id}/share` (confirm or change the number), `POST /phone-requests/{id}/decline`, `GET /friends/{id}/phone`, `DELETE /me/phone-shares/{viewer_id}` | Section 8. Only people the owner shared with can read it |
 | Reminders | `POST /balances/{pair}/remind` | 72-hour cooldown |
 | Receipts & claims | `POST /receipts/upload-url`, `POST /receipts`, `GET /receipts/{id}`, `PATCH /receipts/{id}/items/{n}`, `POST /claims` (open session), `GET /claims/{sid}`, `PUT /claims/{sid}/items/{item}/me`, `POST /claims/{sid}/close`, `WS /claims/{sid}/ws` | Session scoped to participants and verified guests |
 | Voice | `POST /voice/parse`, `POST /voice/drafts/{id}/outcome` | Returns `DraftExpense` with resolved people |
@@ -751,7 +785,7 @@ The two risks that can sink the plan are regulatory (the Wallet) and platform (A
 | Splitwise responds with its own payments in APAC | Medium | Medium | Speed to market plus the collaborative claim flow, which is an interaction model, not a feature toggle |
 | Guest-link abuse (spam links, impersonation) | Low | Medium | OTP on every guest, link expiry and revocation, rate limits |
 
-**External dependencies.** Apple (App Store review, Sign in with Apple, Speech and Vision frameworks), Twilio or equivalent for OTP, an LLM provider with structured-output support, an e-money or BaaS partner for the Wallet, PayNow proxy lookup rules (settlement intent needs the counterparty's registered mobile number, which they must consent to expose).
+**External dependencies.** Apple (App Store review, Sign in with Apple, Speech and Vision frameworks), Twilio or equivalent for OTP, an LLM provider with structured-output support, an e-money or BaaS partner for the Wallet, PayNow and UPI rules (settlement needs the counterparty's phone number, which they share per request through the consented "Request phone number" flow, Section 8).
 
 **Open questions for the founders**
 

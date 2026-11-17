@@ -7,7 +7,8 @@ saved for 24 hours. A retry with the same key gets the saved response back, mark
 
 Rules (Stripe / IETF conventions):
 - Required on every POST, PUT, PATCH and DELETE under /v1, except the sign-in routes
-  (/v1/auth/*) and the pure calculation POST /v1/split/preview.
+  (/v1/auth/*) and read-only POSTs that change nothing (/v1/split/preview,
+  /v1/friends/lookup).
 - Keys are scoped per user.
 - Same key, different request body: 422. Same key while the first is still running: 409.
 - Server errors (5xx) and crashes are not saved, so a retry runs again. That's safe because
@@ -35,7 +36,7 @@ HEADER = "Idempotency-Key"
 TTL = timedelta(hours=24)
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 EXEMPT_PREFIXES = ("/v1/auth/",)
-EXEMPT_PATHS = {"/v1/split/preview"}
+EXEMPT_PATHS = {"/v1/split/preview", "/v1/friends/lookup"}  # change nothing
 
 
 def needs_key(method: str, path: str) -> bool:

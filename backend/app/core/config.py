@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     # Used for parsing local phone numbers typed without a country code.
     default_phone_region: str = "SG"
 
+    # Public web address: QR links are {public_base_url}/u/<code> (PRD section 6A).
+    public_base_url: str = "https://spendit.app"
+    # Placeholder until the app is listed; shown on the QR web page for people without SpendIt.
+    app_store_url: str = "https://apps.apple.com/"
+
     # Shown when a returning guest can't confirm their name (PRD section 15).
     # A setting rather than hard-coded, so it can move to a dedicated support inbox later.
     support_email: str = "aditim3110@gmail.com"

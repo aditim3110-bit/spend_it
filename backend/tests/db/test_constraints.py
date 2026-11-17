@@ -411,3 +411,33 @@ async def test_retry_ticket_is_unique_per_user(conn: AsyncConnection) -> None:
             ),
             {"user_id": a, "key": key, "h": "b" * 64},
         )
+
+
+# --- Friends ------------------------------------------------------------------------------
+
+
+async def test_friendship_is_stored_once_per_pair(conn: AsyncConnection) -> None:
+    a, b = sorted([await user(conn), await user(conn, "Ben")])
+    await conn.execute(
+        text("INSERT INTO friendships (user_a, user_b, source) VALUES (:a, :b, 'qr')"),
+        {"a": a, "b": b},
+    )
+    async with rejected(conn, match="ordered_pair"):  # reversed order is refused
+        await conn.execute(
+            text("INSERT INTO friendships (user_a, user_b, source) VALUES (:b, :a, 'qr')"),
+            {"a": a, "b": b},
+        )
+    async with rejected(conn, match="pk_friendships"):
+        await conn.execute(
+            text("INSERT INTO friendships (user_a, user_b, source) VALUES (:a, :b, 'nearby')"),
+            {"a": a, "b": b},
+        )
+
+
+async def test_one_active_qr_code_per_user(conn: AsyncConnection) -> None:
+    a = await user(conn)
+    await insert(conn, "user_qr_codes", user_id=a, code="A" * 22)
+    async with rejected(conn, match="uq_user_qr_codes_one_active"):
+        await insert(conn, "user_qr_codes", user_id=a, code="B" * 22)
+    async with rejected(conn, match="code_format"):
+        await insert(conn, "user_qr_codes", user_id=a, code="short", revoked_at=NOW)

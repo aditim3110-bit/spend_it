@@ -68,7 +68,15 @@ class Api:
 async def _cleanup() -> None:
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     async with engine.begin() as c:
-        for table in ("idempotency_keys", "refresh_tokens", "devices", "user_identifiers", "users"):
+        for table in (
+            "friendships",
+            "user_qr_codes",
+            "idempotency_keys",
+            "refresh_tokens",
+            "devices",
+            "user_identifiers",
+            "users",
+        ):
             await c.execute(text(f"DELETE FROM {table}"))
     await engine.dispose()
 
