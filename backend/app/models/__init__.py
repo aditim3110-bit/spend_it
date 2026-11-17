@@ -1,5 +1,6 @@
 """ORM models. Every model module must be imported here so Alembic can see it."""
 
+from app.models.auth import Device, Platform, RefreshToken
 from app.models.base import Base
 from app.models.expense import Expense, ExpensePayer, ExpenseRevision, ExpenseShare
 from app.models.group import Group, GroupMember
@@ -9,6 +10,7 @@ from app.models.user import User, UserIdentifier
 
 __all__ = [
     "Base",
+    "Device",
     "Expense",
     "ExpensePayer",
     "ExpenseRevision",
@@ -17,6 +19,8 @@ __all__ = [
     "GroupMember",
     "GuestIdentity",
     "IdempotencyKey",
+    "Platform",
+    "RefreshToken",
     "User",
     "UserIdentifier",
 ]

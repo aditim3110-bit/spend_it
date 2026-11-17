@@ -12,6 +12,7 @@ import pytest
 
 from app.core.config import Settings
 from app.main import create_app
+from tests.support.database import create_and_migrate
 
 AppClient = Callable[..., AbstractAsyncContextManager[httpx.AsyncClient]]
 
@@ -37,3 +38,9 @@ def make_client() -> AppClient:
 async def client(make_client: AppClient) -> AsyncIterator[httpx.AsyncClient]:
     async with make_client() as c:
         yield c
+
+
+@pytest.fixture(scope="session")
+def migrated_database() -> None:
+    """Create the test database if needed and bring it to the latest schema (once per run)."""
+    create_and_migrate()

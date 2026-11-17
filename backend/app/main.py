@@ -14,10 +14,14 @@ from app.api.v1 import router as v1_router
 from app.core.config import Settings, get_settings
 from app.core.errors import install_error_handlers
 from app.db.session import make_engine, make_sessionmaker
+from app.services.auth.otp import ConsoleSender, OtpSender
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, otp_sender: OtpSender | None = None) -> FastAPI:
+    """`otp_sender` lets tests capture codes. Real SMS/email senders replace ConsoleSender
+    once the Twilio and email accounts exist."""
     settings = settings or get_settings()
+    sender = otp_sender or ConsoleSender()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -26,6 +30,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = make_engine(settings.database_url)
         app.state.sessionmaker = make_sessionmaker(app.state.engine)
         app.state.redis = Redis.from_url(settings.redis_url, socket_connect_timeout=1)
+        app.state.otp_sender = sender
         yield
         # Shutdown: close them cleanly.
         await app.state.redis.aclose()

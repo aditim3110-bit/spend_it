@@ -9,9 +9,12 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.1",
     "asyncpg>=0.32.0",
+    "email-validator>=2.4.0",
     "fastapi>=0.163.1",
     "fastapi-cli>=0.0.34",
+    "phonenumbers>=9.0.43",
     "pydantic-settings>=2.16.3",
+    "pyjwt>=2.15.1",
     "redis>=8.1.0",
     "sqlalchemy[asyncio]>=2.1.8",
     "uvicorn[standard]>=0.54.0",
@@ -39,8 +42,8 @@ extend-exclude = ["alembic/versions"]
 select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
-# assert is how pytest checks things; tests build SQL from fixed table names
-"tests/**" = ["S101", "S608"]
+# assert is how pytest checks things; tests use fake tokens and build SQL from fixed table names
+"tests/**" = ["S101", "S105", "S106", "S608"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -27,7 +27,9 @@ class ProblemError(Exception):
         detail: str | None = None,
         errors: list[dict[str, Any]] | None = None,
         title: str | None = None,
+        headers: dict[str, str] | None = None,
     ) -> None:
+        self.headers = headers or {}
         self.status = status
         self.slug = slug
         self.detail = detail
@@ -43,6 +45,7 @@ def problem_response(
     title: str | None = None,
     detail: str | None = None,
     errors: list[dict[str, Any]] | None = None,
+    headers: dict[str, str] | None = None,
 ) -> JSONResponse:
     body: dict[str, Any] = {
         "type": PROBLEM_BASE_URI + slug,
@@ -53,13 +56,18 @@ def problem_response(
         body["detail"] = detail
     if errors:
         body["errors"] = errors
-    return JSONResponse(body, status_code=status, media_type=PROBLEM_CONTENT_TYPE)
+    return JSONResponse(body, status_code=status, media_type=PROBLEM_CONTENT_TYPE, headers=headers)
 
 
 async def _handle_problem(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, ProblemError)  # noqa: S101 - narrows the type for the checker
     return problem_response(
-        exc.status, exc.slug, title=exc.title, detail=exc.detail, errors=exc.errors
+        exc.status,
+        exc.slug,
+        title=exc.title,
+        detail=exc.detail,
+        errors=exc.errors,
+        headers=exc.headers,
     )
 
 
@@ -67,7 +75,7 @@ async def _handle_http(_: Request, exc: Exception) -> JSONResponse:
     assert isinstance(exc, StarletteHTTPException)  # noqa: S101
     slug = HTTPStatus(exc.status_code).phrase.lower().replace(" ", "-")
     detail = exc.detail if isinstance(exc.detail, str) else None
-    return problem_response(exc.status_code, slug, detail=detail)
+    return problem_response(exc.status_code, slug, detail=detail, headers=exc.headers)
 
 
 async def _handle_validation(_: Request, exc: Exception) -> JSONResponse:

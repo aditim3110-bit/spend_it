@@ -10,7 +10,7 @@ from sqlalchemy.pool import NullPool
 
 from alembic import command
 from app.models import Base
-from tests.db.conftest import TEST_DATABASE_URL, alembic_config
+from tests.support.database import TEST_DATABASE_URL, alembic_config
 
 
 def test_downgrade_then_upgrade_round_trip() -> None:

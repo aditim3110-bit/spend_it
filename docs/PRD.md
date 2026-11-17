@@ -144,8 +144,15 @@ A user is identified by at least one verified contact point — an E.164 phone n
 **OTP mechanics**
 
 - SMS via Twilio Verify (handles carrier routing and fraud rules). Email OTP via a transactional email provider, same code format.
+- **Normalising identifiers.** Phones are stored as E.164. Emails are lowercased and trimmed only; Gmail dots and `+tags` are kept as typed. Variations can only be verified by the inbox owner, so they carry no security risk, just a rare second account for the same person.
+- **One-tap autofill.** When the code arrives on the same device, it should fill in with one tap. Detecting the code is done by Apple (SMS on iOS; email codes in Apple Mail on iOS 17+; Safari on the web). SpendIt's part is making the code recognisable:
+  - The code is 6 digits and appears near the start of the message ("123456 is your SpendIt code").
+  - SMS ends with an origin-bound line (`@spendit.app #123456`), so Safari offers the code only on the real SpendIt domain, which protects guests from look-alike phishing pages.
+  - The email subject contains the code ("123456 is your SpendIt code").
+  - The iOS code field uses `textContentType = .oneTimeCode`, and the guest web page uses `autocomplete="one-time-code"`.
+  - Autofill isn't available everywhere: the Gmail app and some Android browsers won't offer it, and the code can always be typed.
 - Codes expire in 10 minutes, 5 attempts per code, 3 sends per identifier per hour, 10 per IP per hour. State lives in Redis keyed by a hashed identifier.
-- On success the API issues a short-lived access token (JWT, 15 min) and a rotating refresh token (30 days, stored in the iOS Keychain). Refresh tokens are one-time-use; reuse revokes the whole family (detects token theft).
+- On success the API issues a short-lived access token (JWT, 15 min) and a rotating refresh token (30 days, stored in the iOS Keychain). Refresh tokens are one-time-use; reuse revokes the whole family (detects token theft). **Grace period** (the industry-standard "reuse interval"): if the same refresh token is presented again within 10 seconds, the server issues another fresh token in the same family instead of revoking. This covers a phone retrying after a dropped connection, or two requests refreshing at once. Reuse after 10 seconds is treated as theft.
 - Device record created on first login (`device_id`, platform, APNs token) so pushes and session revocation work per device.
 
 **Contact matching (how friends find each other)**
@@ -592,7 +599,7 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 
 ## 17. API surface (FastAPI)
 
-One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` required on every POST, PUT, PATCH and DELETE (Section 5). FastAPI's generated OpenAPI spec is the contract from which the Swift client is generated.
+One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` required on every POST, PUT, PATCH and DELETE (Section 5). The exceptions are the unauthenticated sign-in endpoints (`/auth/otp/*`, `/auth/apple`, `/auth/refresh`, `/auth/logout`): there is no user yet to scope a key to, and they are protected by OTP rate limits and refresh-token rotation instead, as is standard. FastAPI's generated OpenAPI spec is the contract from which the Swift client is generated.
 
 | Area | Endpoints | Notes |
 | --- | --- | --- |
