@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     access_token_minutes: int = Field(default=15, gt=0)
     refresh_token_days: int = Field(default=30, gt=0)
 
+    # Shown when a returning guest can't confirm their name (PRD section 15).
+    # A setting rather than hard-coded, so it can move to a dedicated support inbox later.
+    support_email: str = "aditim3110@gmail.com"
+
 
 @lru_cache
 def get_settings() -> Settings:

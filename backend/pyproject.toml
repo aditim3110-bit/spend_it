@@ -39,8 +39,8 @@ extend-exclude = ["alembic/versions"]
 select = ["E", "F", "W", "I", "B", "UP", "ASYNC", "S", "SIM", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
-# assert is how pytest checks things
-"tests/**" = ["S101"]
+# assert is how pytest checks things; tests build SQL from fixed table names
+"tests/**" = ["S101", "S608"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

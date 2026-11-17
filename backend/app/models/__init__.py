@@ -1,17 +1,22 @@
 """ORM models. Every model module must be imported here so Alembic can see it."""
 
-from sqlalchemy import MetaData
-from sqlalchemy.orm import DeclarativeBase
+from app.models.base import Base
+from app.models.expense import Expense, ExpensePayer, ExpenseRevision, ExpenseShare
+from app.models.group import Group, GroupMember
+from app.models.guest import GuestIdentity
+from app.models.idempotency import IdempotencyKey
+from app.models.user import User, UserIdentifier
 
-# Predictable constraint names, so migrations can drop/rename them reliably.
-NAMING_CONVENTION = {
-    "ix": "ix_%(column_0_label)s",
-    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
-    "ck": "ck_%(table_name)s_%(constraint_name)s",
-    "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
-    "pk": "pk_%(table_name)s",
-}
-
-
-class Base(DeclarativeBase):
-    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+__all__ = [
+    "Base",
+    "Expense",
+    "ExpensePayer",
+    "ExpenseRevision",
+    "ExpenseShare",
+    "Group",
+    "GroupMember",
+    "GuestIdentity",
+    "IdempotencyKey",
+    "User",
+    "UserIdentifier",
+]

@@ -115,7 +115,7 @@ All three clients call the same versioned API; the API alone talks to the stores
 
 - **The ledger is append-only.** Expenses are never updated in place; every edit creates a new revision and the previous one is retained. Balances are derived, never stored as the source of truth (they are cached and reconciled nightly).
 - **Money is integers.** Every amount is stored as `(amount_minor: bigint, currency: char(3))`. Rounding happens exactly once, at the split step, using the largest-remainder method (Section 7). No floats anywhere in the money path, including Swift (`Decimal` or `Int` minor units on the client).
-- **Every write is idempotent.** Clients send an `Idempotency-Key` header (a UUID generated on-device); the API stores the response for 24 h and replays it on retry. This is what makes offline queuing and flaky-network retries safe.
+- **Every write is idempotent.** Every POST, PUT, PATCH and DELETE (not only money actions) carries an `Idempotency-Key` header (a UUID generated on-device, attached automatically by the app's API client); the API stores the response for 24 h and replays it on retry. This is what makes offline queuing and flaky-network retries safe.
 - **Thin clients.** The iOS app may preview a split locally for responsiveness, but the server recomputes and the server's result is what is saved and displayed.
 - **Versioned API from day one.** `/v1/...` so the web client and future Android client can evolve independently of iOS releases that users install slowly.
 
@@ -139,6 +139,7 @@ A user is identified by at least one verified contact point — an E.164 phone n
 - Both identifiers are globally unique: one phone number or email can belong to exactly one account. Attempting to add one already in use triggers a merge-or-recover flow, never a silent failure.
 - A user with both identifiers can sign in or recover with either. A user with only one is prompted (not forced) after their first settled expense to add the other.
 - Profile: display name (required), avatar (optional), default currency (derived from region, editable), home country.
+- The account is created when the OTP is verified. A new user is then shown a "What should friends call you?" screen before anything else; returning users skip it. The text box shows grey placeholder text, "Your first name", to steer people away from nicknames (this also makes the guest name check in Section 15 reliable). Until a display name is set, the server refuses to add the user to expenses.
 
 **OTP mechanics**
 
@@ -156,7 +157,7 @@ A user is identified by at least one verified contact point — an E.164 phone n
 
 - Lost phone number: sign in with email, then replace the number (requires OTP on the new number and a 24-hour notice email to the old address).
 - Lost both: support-assisted recovery with proof via a prior settlement record; out of scope to automate at launch.
-- Guest identity (Section 15) is a separate lightweight table; when a guest later signs up with the same verified phone or email, their guest records are attached to the new account automatically.
+- Guest identity (Section 15) is a separate lightweight table. When a guest later signs up with the same verified phone or email, they confirm it's them by typing their name, and their past bills then appear in the new account (Section 15, "Merging into a real account").
 
 **Implementation notes**
 
@@ -268,7 +269,7 @@ A group is a named container with a member list, a default currency and a defaul
 **Requirements**
 
 - Create with name, optional cover emoji or photo, type (trip, home, couple, event, other — the type only changes defaults and the suggested icon), default currency, and whether debt simplification is on.
-- Add members from Friends, from contacts (hash match), by sharing an invite link, or as a guest placeholder (Section 15). Invite links are revocable and can be set to require admin approval.
+- Add members from Friends, from contacts (hash match), by sharing an invite link, or as an unnamed guest spot that the guest fills in with their own name (Section 15). Invite links are revocable and can be set to require admin approval.
 - Roles: creator is admin; admins can add or remove members, change settings, archive the group. Any member can add and edit expenses.
 - A member can only leave when their balance in the group is zero; otherwise they are prompted to settle first (same rule as Splitwise, and it prevents orphaned debts).
 - Per-group default split: equal, or a saved share weighting (the couple with 2 shares). New expenses prefill from it.
@@ -483,14 +484,16 @@ A guest is a lightweight identity — a display name plus a verified phone or em
 **Flow for the guest**
 
 1. Receives a link (`spendit.app/c/8f3kQ2`) via iMessage, WhatsApp or email from the payer. The link is tied to one claim session or one expense.
-2. Opens a mobile-first web page (FastAPI-rendered, no app required). Enters what they would like to be called and a phone number or email, receives an OTP, enters it. OTP verification is required so a guest cannot be impersonated and so the record can be merged later.
+2. Opens a mobile-first web page (FastAPI-rendered, no app required). Enters their name (the box shows the same grey "Your first name" hint as app sign-up, Section 6) and a phone number or email, receives an OTP, enters it. OTP verification is required so a guest cannot be impersonated and so the record can be merged later.
 3. Sees the item list (if the expense came from a receipt) and multi-selects their items — "2 oranges, 4 apples" — with the same shared-item and quantity rules as app users. Tax and fees are allocated proportionally exactly as in Section 14. If the expense has no items, they simply see their share as set by the payer and acknowledge it.
 4. Sees a receipt page: what they claimed, their adjustment share, the total they owe, and how to pay (PayNow QR or UPI intent for the payer's registered proxy; later, a card or Apple Pay button funding the payer's Wallet). They can mark "I've paid" which notifies the payer to confirm.
 5. Gets a magic link by SMS or email to return to their page any time; a "Get the app" prompt is shown once, after they are done, never before.
 
 **Flow for the payer**
 
-- On the participants step, "Add someone without SpendIt" creates a guest placeholder with a name (and optionally a phone or email, which pre-addresses the link). The share sheet opens with the link.
+- On the participants step, the payer taps "+ Someone without SpendIt" once per guest. Each tap adds an **unnamed spot**, shown as "Guest 1", "Guest 2" and so on. The payer never types a guest's name. The spots count in the split straight away, so "split equally 4 ways" works before any guest has opened the link.
+- The bill gets **one shared link**, which the payer can paste into a group chat. Each guest who opens it and verifies by OTP takes the next free spot, and their own name replaces "Guest N" everywhere. Once every spot is filled, the link stops accepting new people. The same phone or email can't take two spots on one bill.
+- If someone unexpected takes a spot (the link was forwarded), the payer sees their name appear and can remove them. That frees the spot and records a new revision of the expense.
 - The payer sees guest status live: *invited*, *verified*, *claimed*, *paid (unconfirmed)*, *settled*.
 - Guests appear in balances like anyone else, under a "guests" badge. Debts with guests can be settled by recording a payment, and are included in group totals but excluded from debt simplification (a guest cannot be asked to pay a third party they never met).
 
@@ -500,7 +503,15 @@ A guest is a lightweight identity — a display name plus a verified phone or em
 - Rate limits on OTP per link and per identifier; a guest cannot change their claim after the session closes.
 - A guest's phone or email is visible only to the payer who added them, not to other participants.
 
-**Merging into a real account.** On sign-up, if the verified identifier matches `guest_identities`, all guest participations, balances and claims are re-pointed to the new `user_id` in one transaction, and the guest row is marked merged. Friends who had a balance with the guest now see the full user. This is also how guest conversion (a launch metric) is measured.
+**Merging into a real account.** On sign-up, after the OTP is verified, the server looks for `guest_identities` with the same verified identifier. There may be several, because different payers can each add the same person as a guest. If there are any:
+
+1. **Confirm it's them, without revealing anything.** The app says: "We found an account linked to this number. To confirm it's you, please type your name." No bills, amounts or other people's names are shown before the check passes. Phone numbers get recycled by telcos, so the person signing up may not be the original guest, and they must learn nothing about that guest's bills.
+2. **Name matches:** every matching guest record is linked to the new account (`guest_identities.merged_user_id`), and all their past bills appear, settled and unsettled. The old expense revisions are **not** rewritten, because the ledger is append-only. Balances, feeds and claims resolve a merged `guest_id` to its user, so friends who had a balance with the guest now see the full user. This is how guest conversion (a launch metric) is measured.
+3. **Name doesn't match:** they can try again, up to **3 attempts** in total. After the third wrong name, nothing is linked, the records are marked `merge_blocked_at`, and the app says: "We couldn't confirm this. Please contact support at aditim3110@gmail.com." The new account still works, just without the old bills. The guest records and their balances stay exactly as they were: friends still see them, and they can still be settled through the guest link. So nobody can avoid a debt by failing the check. Support can link the records by hand after verifying the person.
+
+**How names are compared.** Only names the guest typed **themselves** count: the name entered on the guest page when they verified by OTP (step 2 above). Guest records that were never verified are ignored by this check. Both names are normalised (case ignored, accents removed, punctuation and extra spaces ignored), and only the **first names** are compared, because someone may type "Chen Wei" on one form and "Chen" on another. Both forms ask for a first name, so this rarely matters. The check passes if the first name matches the first name on any of the matching verified guest records. Attempts are rate-limited like OTPs, so the name can't be guessed by brute force.
+
+The support address is a setting (`SPENDIT_SUPPORT_EMAIL`), not hard-coded, so it can move to a dedicated support inbox later.
 
 **Data.** `guest_identities (id, display_name, identifier_kind, identifier_normalised, verified_at, merged_user_id?)`, `guest_links (token, expense_id|claim_session_id, created_by, expires_at, revoked_at)`. Expense participant rows carry either `user_id` or `guest_id`, never both, enforced by a check constraint.
 
@@ -552,11 +563,11 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 | `user_identifiers` | user\_id, kind (phone/email), value\_normalised (unique), verified\_at, is\_primary | One row per identifier; max one of each kind per user |
 | `devices` | user\_id, platform, apns\_token, last\_seen\_at | Push targets and session management |
 | `refresh_tokens` | id, user\_id, device\_id, family\_id, expires\_at, used\_at | Rotation with family revocation |
-| `guest_identities` | id, display\_name, identifier\_kind, identifier\_normalised, verified\_at, merged\_user\_id | Section 15 |
+| `guest_identities` | id, display\_name, identifier\_kind, identifier\_normalised, verified\_at, created\_by, merged\_user\_id, merged\_at, merge\_blocked\_at | Section 15. One row per guest spot; display\_name and identifier are empty until the guest fills the spot (verified\_at set). Identifier not unique across bills |
 | `groups` | id, name, type, default\_currency, simplify\_debts, archived\_at, created\_by |  |
 | `group_members` | group\_id, user\_id or guest\_id, role, joined\_at, left\_at | History retained |
 | `expenses` | id, context\_type (direct/group), group\_id, current\_revision\_id, kind (expense/settlement), created\_by, deleted\_at | Pointer to the live revision |
-| `expense_revisions` | id, expense\_id, rev\_no, name, amount\_minor, currency, expense\_date, split\_mode, notes, receipt\_id, created\_by, created\_at, reason (create/edit/move) | Immutable |
+| `expense_revisions` | id, expense\_id, rev\_no, context\_type, group\_id, name, amount\_minor, currency, expense\_date, split\_mode, notes, receipt\_id, created\_by, created\_at, reason (create/edit/move) | Immutable. Context is recorded per revision so a move keeps its history (Section 10); `expenses.context_type/group_id` mirror the current revision |
 | `expense_payers` | revision\_id, user\_id or guest\_id, amount\_minor | Sum = amount |
 | `expense_shares` | revision\_id, user\_id or guest\_id, owed\_minor, input\_value (for exact/percent/shares) | Sum = amount |
 | `balances` | context\_type, group\_id, party\_a, party\_b, currency, amount\_minor | Materialised; a < b ordering; rebuilt nightly |
@@ -581,7 +592,7 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 
 ## 17. API surface (FastAPI)
 
-One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` required on every POST/PUT that moves or records money. FastAPI's generated OpenAPI spec is the contract from which the Swift client is generated.
+One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` required on every POST, PUT, PATCH and DELETE (Section 5). FastAPI's generated OpenAPI spec is the contract from which the Swift client is generated.
 
 | Area | Endpoints | Notes |
 | --- | --- | --- |
