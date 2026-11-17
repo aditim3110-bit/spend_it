@@ -3,7 +3,7 @@
 from redis.asyncio import Redis
 
 from app.services.auth.otp import CODE_TTL_SECONDS, email_subject, message_text
-from tests.auth.conftest import PHONE, TEST_REDIS_URL, Api
+from tests.support.api import PHONE, TEST_REDIS_URL, Api
 
 
 async def test_first_sign_in_creates_an_account_without_a_name(api: Api) -> None:

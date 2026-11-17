@@ -13,6 +13,7 @@ from redis.asyncio import Redis
 from app.api.v1 import router as v1_router
 from app.core.config import Settings, get_settings
 from app.core.errors import install_error_handlers
+from app.core.idempotency import IdempotencyMiddleware
 from app.db.session import make_engine, make_sessionmaker
 from app.services.auth.otp import ConsoleSender, OtpSender
 
@@ -38,6 +39,7 @@ def create_app(settings: Settings | None = None, otp_sender: OtpSender | None = 
 
     app = FastAPI(title="SpendIt API", version="0.1.0", lifespan=lifespan)
     install_error_handlers(app)
+    app.add_middleware(IdempotencyMiddleware)
     app.include_router(v1_router)
     return app
 

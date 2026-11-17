@@ -115,7 +115,7 @@ All three clients call the same versioned API; the API alone talks to the stores
 
 - **The ledger is append-only.** Expenses are never updated in place; every edit creates a new revision and the previous one is retained. Balances are derived, never stored as the source of truth (they are cached and reconciled nightly).
 - **Money is integers.** Every amount is stored as `(amount_minor: bigint, currency: char(3))`. Rounding happens exactly once, at the split step, using the largest-remainder method (Section 7). No floats anywhere in the money path, including Swift (`Decimal` or `Int` minor units on the client).
-- **Every write is idempotent.** Every POST, PUT, PATCH and DELETE (not only money actions) carries an `Idempotency-Key` header (a UUID generated on-device, attached automatically by the app's API client); the API stores the response for 24 h and replays it on retry. This is what makes offline queuing and flaky-network retries safe.
+- **Every write is idempotent.** Every POST, PUT, PATCH and DELETE (not only money actions) carries an `Idempotency-Key` header (a UUID generated on-device, attached automatically by the app's API client); the API stores the response for 24 h and replays it on retry, marked with an `Idempotent-Replayed: true` header. The same key with a different request body is rejected (422). A retry that arrives while the first request is still running gets 409 and retries shortly. Server errors (5xx) are not stored, so a retry runs again. This follows the Stripe / IETF `Idempotency-Key` conventions. This is what makes offline queuing and flaky-network retries safe.
 - **Thin clients.** The iOS app may preview a split locally for responsiveness, but the server recomputes and the server's result is what is saved and displayed.
 - **Versioned API from day one.** `/v1/...` so the web client and future Android client can evolve independently of iOS releases that users install slowly.
 
@@ -632,7 +632,7 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 
 ## 17. API surface (FastAPI)
 
-One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` required on every POST, PUT, PATCH and DELETE (Section 5). The exceptions are the unauthenticated sign-in endpoints (`/auth/otp/*`, `/auth/apple`, `/auth/refresh`, `/auth/logout`): there is no user yet to scope a key to, and they are protected by OTP rate limits and refresh-token rotation instead, as is standard. FastAPI's generated OpenAPI spec is the contract from which the Swift client is generated.
+One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` required on every POST, PUT, PATCH and DELETE (Section 5). The exceptions are the unauthenticated sign-in endpoints (`/auth/otp/*`, `/auth/apple`, `/auth/refresh`, `/auth/logout`): there is no user yet to scope a key to, and they are protected by OTP rate limits and refresh-token rotation instead, as is standard. `POST /split/preview` is also exempt: it is a pure calculation that changes nothing, and clients call it on every keystroke. FastAPI's generated OpenAPI spec is the contract from which the Swift client is generated.
 
 | Area | Endpoints | Notes |
 | --- | --- | --- |

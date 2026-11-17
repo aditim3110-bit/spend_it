@@ -9,7 +9,7 @@ import pytest
 
 from app.core.config import Settings
 from app.services.auth.tokens import create_access_token, hash_refresh_token
-from tests.auth.conftest import Api
+from tests.support.api import Api
 
 
 def auth(token: str) -> dict[str, str]:
