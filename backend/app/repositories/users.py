@@ -39,3 +39,10 @@ async def create_with_identifier(session: AsyncSession, kind: IdentifierKind, va
     )
     await session.flush()
     return user
+
+
+async def get_users(session: AsyncSession, ids: set[uuid.UUID]) -> dict[uuid.UUID, User]:
+    if not ids:
+        return {}
+    rows = await session.execute(select(User).where(User.id.in_(ids)))
+    return {u.id: u for u in rows.scalars()}

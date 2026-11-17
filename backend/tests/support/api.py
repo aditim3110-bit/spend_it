@@ -68,7 +68,14 @@ class Api:
 async def _cleanup() -> None:
     engine = create_async_engine(TEST_DATABASE_URL, poolclass=NullPool)
     async with engine.begin() as c:
+        # The ledger tables refuse DELETE (append-only trigger). "replica" mode switches
+        # triggers off for this one test-cleanup transaction only; the app never does this.
+        await c.execute(text("SET LOCAL session_replication_role = replica"))
         for table in (
+            "expense_shares",
+            "expense_payers",
+            "expenses",
+            "expense_revisions",
             "friendships",
             "user_qr_codes",
             "idempotency_keys",

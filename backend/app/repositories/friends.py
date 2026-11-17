@@ -63,6 +63,30 @@ async def connect(session: AsyncSession, x: uuid.UUID, y: uuid.UUID, source: Fri
     return (await session.execute(stmt)).scalar_one_or_none() is not None
 
 
+async def connect_many(
+    session: AsyncSession, pairs: set[tuple[uuid.UUID, uuid.UUID]], source: FriendSource
+) -> None:
+    """Create every missing friendship in one statement; existing ones are left alone."""
+    rows = [{"user_a": a, "user_b": b, "source": source} for a, b in {ordered(*p) for p in pairs}]
+    if rows:
+        await session.execute(insert(Friendship).values(rows).on_conflict_do_nothing())
+
+
+async def friends_among(
+    session: AsyncSession, user_id: uuid.UUID, others: set[uuid.UUID]
+) -> set[uuid.UUID]:
+    """Which of `others` are friends of `user_id`."""
+    if not others:
+        return set()
+    stmt = select(Friendship.user_a, Friendship.user_b).where(
+        or_(
+            and_(Friendship.user_a == user_id, Friendship.user_b.in_(others)),
+            and_(Friendship.user_b == user_id, Friendship.user_a.in_(others)),
+        )
+    )
+    return {b if a == user_id else a for a, b in (await session.execute(stmt)).all()}
+
+
 async def remove(session: AsyncSession, x: uuid.UUID, y: uuid.UUID) -> None:
     a, b = ordered(x, y)
     await session.execute(delete(Friendship).where(Friendship.user_a == a, Friendship.user_b == b))

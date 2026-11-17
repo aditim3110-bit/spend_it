@@ -82,10 +82,16 @@ class Expense(IdMixin, CreatedAtMixin, Base):
     # (the two tables point at each other), inside one transaction.
     current_revision_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    # Soft delete (PRD section 7): restorable for 30 days. Who deleted it is kept so the
+    # feed can say "deleted by Ben".
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
 
     __table_args__ = (
         CheckConstraint(CONTEXT_CHECK, name="context_matches_group"),
+        CheckConstraint(
+            "(deleted_at IS NULL) = (deleted_by IS NULL)", name="deleted_fields_together"
+        ),
         # The current revision must be one of THIS expense's revisions. The FK is added
         # after expense_revisions exists, because the two tables point at each other.
         ForeignKeyConstraint(

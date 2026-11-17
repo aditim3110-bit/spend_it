@@ -5,6 +5,7 @@ Clients (the iOS app, later the web app) always get the same JSON shape:
 with the content type application/problem+json.
 """
 
+import logging
 from http import HTTPStatus
 from typing import Any
 
@@ -12,6 +13,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+logger = logging.getLogger("spendit.errors")
 
 PROBLEM_CONTENT_TYPE = "application/problem+json"
 PROBLEM_BASE_URI = "https://spendit.app/problems/"
@@ -89,8 +92,10 @@ async def _handle_validation(_: Request, exc: Exception) -> JSONResponse:
     )
 
 
-async def _handle_unexpected(_: Request, exc: Exception) -> JSONResponse:
-    # Never leak internal details (stack traces, SQL) to clients.
+async def _handle_unexpected(request: Request, exc: Exception) -> JSONResponse:
+    # The full error goes to the server log; the client never sees internal details
+    # (stack traces, SQL).
+    logger.error("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
     return problem_response(500, "internal-error", detail="Something went wrong on our side.")
 
 

@@ -275,7 +275,11 @@ With these caps, `A · w` is at most 10¹³ × 10⁵ = 10¹⁸, below the 64-bit
 
 **Net effect per expense.** For each person, `net_i = paid_i − owed_i`. Positive means the expense made others owe them; negative means they owe. The sum of all `net_i` within an expense is zero by construction, which is the invariant the nightly audit checks across every expense and every group.
 
-**Editing and deleting.** An edit creates a new `expense_revision`; the expense points at its current revision and the old one stays for history and dispute resolution. Delete is a soft-delete (`deleted_at`) and reversible for 30 days. Any participant can edit; the activity feed records who changed what, and every other participant gets a notification.
+**Editing and deleting.** An edit creates a new `expense_revision`; the expense points at its current revision and the old one stays for history and dispute resolution. Delete is a soft-delete (`deleted_at`, `deleted_by`) and reversible for 30 days. Any participant in the current version can edit, delete and restore; the activity feed records who changed what, and every other participant gets a notification. Someone removed from an expense by an edit can still view it and its history, but can no longer change it. Anyone who was never on an expense gets "not found", as if it didn't exist.
+
+**Who can be on an expense (direct, non-group).** The person adding it must be on it (they paid, or they owe a share), and everyone else must already be their friend (Section 6A). In an edit, only people being newly added are checked against the editor's friends; people already on it stay even if a friendship has since ended, because money facts aren't hidden. Everyone on a shared expense automatically becomes friends with each other (friendship source `expense`), on create and for people newly added by an edit; an edit never re-creates a friendship someone removed. Everyone on an expense must have set their name (Section 6).
+
+**Simultaneous edits: the last save wins.** If Aditi and Ben edit the same expense at about the same time, whichever saves last becomes the current version, and nobody is asked to reload. Nothing is lost: every save is kept as its own revision in the history, so an overwritten version can be seen (and copied back) from the expense's history. Saves at the very same instant are queued by the database, so both are recorded in order.
 
 **Validation lives in one place.** A `SplitEngine` module on the server takes `(total, currency, payers, mode, inputs)` and returns the two lists or a typed error (`SumMismatch`, `NegativeShare`, `EmptyParticipants`). The iOS app ships a Swift port of the same algorithm for instant previews, with a shared JSON fixture suite that both implementations must pass in CI.
 
@@ -635,7 +639,7 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 | `guest_identities` | id, display\_name, identifier\_kind, identifier\_normalised, verified\_at, created\_by, merged\_user\_id, merged\_at, merge\_blocked\_at | Section 15. One row per guest spot; display\_name and identifier are empty until the guest fills the spot (verified\_at set). Identifier not unique across bills |
 | `groups` | id, name, type, default\_currency, simplify\_debts, archived\_at, created\_by |  |
 | `group_members` | group\_id, user\_id or guest\_id, role, joined\_at, left\_at | History retained |
-| `expenses` | id, context\_type (direct/group), group\_id, current\_revision\_id, kind (expense/settlement), created\_by, deleted\_at | Pointer to the live revision |
+| `expenses` | id, context\_type (direct/group), group\_id, current\_revision\_id, kind (expense/settlement), created\_by, deleted\_at, deleted\_by | Pointer to the live revision |
 | `expense_revisions` | id, expense\_id, rev\_no, context\_type, group\_id, name, amount\_minor, currency, expense\_date, split\_mode, notes, receipt\_id, created\_by, created\_at, reason (create/edit/move) | Immutable. Context is recorded per revision so a move keeps its history (Section 10); `expenses.context_type/group_id` mirror the current revision |
 | `expense_payers` | revision\_id, user\_id or guest\_id, amount\_minor | Sum = amount |
 | `expense_shares` | revision\_id, user\_id or guest\_id, owed\_minor, input\_value (for exact/percent/shares) | Sum = amount |
@@ -673,7 +677,7 @@ One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` re
 | Users | `GET/PATCH /me`, `POST /me/contacts/match`, `GET /friends` | Contact match takes hashes only |
 | Friends | `GET /me/qr`, `POST /me/qr/reset`, `POST /friends/connect` (scanned code), `POST /friends/lookup`, `POST /friends/add` (phone or email), `DELETE /friends/{id}`, `GET /u/{code}` (web page); Phase 2: `POST /friends/nearby/sessions`, `POST /friends/nearby/requests`, `POST /friends/nearby/requests/{id}/accept`, `.../decline` | Section 6A. Connect is rate-limited |
 | Groups | `POST /groups`, `GET /groups`, `GET/PATCH /groups/{id}`, `POST /groups/{id}/members`, `DELETE /groups/{id}/members/{pid}`, `POST /groups/{id}/invites`, `POST /invites/{token}/accept`, `POST /groups/{id}/archive` | Leave blocked while balance non-zero (409) |
-| Expenses | `POST /expenses`, `GET /expenses?context=...&cursor=...`, `GET /expenses/{id}`, `PUT /expenses/{id}` (new revision), `DELETE /expenses/{id}`, `POST /expenses/{id}/restore`, `POST /expenses/{id}/move`, `GET /expenses/{id}/revisions` | Body carries payers, split mode and inputs; server returns computed shares |
+| Expenses | `POST /expenses`, `GET /expenses?friend_id=...&status=live\|deleted&cursor=...`, `GET /expenses/{id}`, `PUT /expenses/{id}` (new revision; the last save wins), `DELETE /expenses/{id}`, `POST /expenses/{id}/restore`, `POST /expenses/{id}/move`, `GET /expenses/{id}/revisions` | Body carries payers, split mode and inputs; server returns computed shares. The list is newest expense date first; `status=deleted` lists those still restorable (30 days). Group filters arrive with groups |
 | Split preview | `POST /split/preview` | Pure function, no persistence; used by clients for live editors |
 | Balances | `GET /balances`, `GET /balances/friends/{id}`, `GET /groups/{id}/balances?simplified=true` | Per currency |
 | Settlements | `POST /settlements` (record), `POST /settlements/paynow-intent`, `POST /settlements/{id}/confirm`, `POST /settlements/{id}/dispute` | Wallet variant added in Phase 2 |
@@ -689,7 +693,7 @@ One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` re
 
 **Conventions**
 
-- Cursor pagination (`cursor`, `limit`) on every list; cursors are opaque base64 of `(created_at, id)`.
+- Cursor pagination (`cursor`, `limit`) on every list; cursors are opaque base64 of the last item's sort key, usually `(created_at, id)`. The expense list is sorted by expense date first, so its cursor is `(expense_date, created_at, id)`.
 - Errors follow RFC 9457 problem details: `{type, title, status, detail, errors[]}`; split validation errors list the offending participant and the remainder.
 - All timestamps UTC ISO-8601; `expense_date` is a plain date.
 - Webhooks and background jobs are idempotent on the partner's event ID.
