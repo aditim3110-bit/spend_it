@@ -1,0 +1,32 @@
+{
+  "type": "split",
+  "description": "A negative exact amount is rejected even though the total adds up.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "ben",
+      "amount": 10000
+    }
+  ],
+  "mode": "exact",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": -500
+    },
+    {
+      "id": "ben",
+      "value": 5500
+    },
+    {
+      "id": "chen",
+      "value": 5000
+    }
+  ],
+  "expect_error": {
+    "code": "NegativeShare",
+    "side": "shares",
+    "participant_id": "aditi"
+  }
+}

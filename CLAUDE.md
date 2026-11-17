@@ -7,6 +7,7 @@ A payment-splitting app built to compete with Splitwise. The full spec is `docs/
 - `backend/`: FastAPI API (Python 3.12, uv)
 - `ios/`: SwiftUI app (`SpendIt.xcodeproj`, created in Xcode, never by hand)
 - `fixtures/split/`: shared JSON test cases for the split engine. Python and Swift must both pass every case.
+- `shared/currencies.json`: ISO 4217 currencies and their decimals (real money only), read by both backend and iOS. Never use Apple's or Babel's currency data for decimals.
 - `web/`: web app, Phase 4 (not yet)
 - `docs/`: PRD and design notes
 
@@ -23,7 +24,7 @@ A payment-splitting app built to compete with Splitwise. The full spec is `docs/
 
 1. **Money is integers.** Store and pass amounts as integer minor units plus an ISO 4217 currency code (S$84.50 is `8450, "SGD"`). Never use float for money, in Python or Swift. Use the currency's own exponent (JPY 0, KWD 3).
 2. **Rounding happens once,** inside the split engine, using the largest-remainder method. Ties go first to the single payer (if there is exactly one and they are a participant), then by participant ID ascending (lowercase string compare). See PRD section 7.
-3. **Every expense balances.** The payers' total, the shares' total and the expense amount are all equal. The split engine enforces this and returns typed errors.
+3. **Every expense balances.** The payers' total, the shares' total and the expense amount are all equal. The split engine enforces this and returns typed errors. Caps: total ≤ 10¹³ minor units, ≤ 100 payers, ≤ 100 participants, each payer and each person's input capped at the total (percent ≤ 100%, share weight ≤ 1,000). See PRD section 7, "Limits".
 4. **The ledger is append-only.** An edit creates a new `expense_revisions` row. A delete is a soft delete. Balances are derived and can be rebuilt from revisions.
 5. **Writes are idempotent.** Every POST or PUT that creates or moves money needs an `Idempotency-Key` header.
 6. **The server decides.** Clients may preview a split locally, but the server recomputes it, and the server's result is what gets saved.

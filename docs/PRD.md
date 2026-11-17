@@ -174,7 +174,7 @@ Every expense reduces to the same two lists — who paid how much, and who owes 
 | --- | --- |
 | Name | Free text, 1–120 chars. Voice and scan prefill it (merchant name). |
 | Amount | Positive integer in minor units of the currency (S$84.50 → 8450 SGD). Currencies with 0 or 3 decimals (JPY, KWD) use their own minor-unit exponent from ISO 4217. |
-| Currency | Defaults to the currency of the user's current location (CoreLocation → reverse-geocoded country → ISO currency), falling back to the profile default. Editable per expense. Last-used currency per group is remembered. |
+| Currency | Defaults to the currency of the user's current location (CoreLocation → reverse-geocoded country → ISO currency), falling back to the profile default. Editable per expense. Last-used currency per group is remembered. Any real ISO 4217 currency is allowed (about 155; funds, precious metals and test codes excluded). The list and each currency's decimals come from one shared table, `shared/currencies.json`, which the server and the iOS app both read, so they never disagree. The iOS picker has a search box that matches currency code, currency name and country name. Retired currencies stay in the table, flagged, so old expenses still display. |
 | Date | Defaults to today in the user's time zone; editable; stored as a date plus the creation timestamp. |
 | Payers | One or more `(user, amount_paid)`; sum must equal Amount. |
 | Participants & split | One or more `(user, amount_owed)`; sum must equal Amount. Derived from the chosen split mode. |
@@ -216,6 +216,18 @@ Ties on the fractional remainder are broken deterministically so the same input 
 Payer priority only breaks exact ties; it never overrides a larger fractional remainder. Because each participant receives at most one extra unit, the payer never absorbs more than one minor unit per expense.
 
 Examples: S$100.00 split equally three ways, paid by Ben → Ben 3334, the others 3333 each; the UI shows it ("Ben pays 1¢ more"). S$2.00 split equally three ways, paid by Ben → base 66 each with 2 cents left over: Ben gets one, and the other goes to whichever of the remaining two has the lower ID.
+
+**Limits.** These caps keep every intermediate value in the rounding formula within a 64-bit integer, so Python and Swift give identical results without overflow:
+
+| Limit | Value | Error |
+| --- | --- | --- |
+| Expense total | 1 to 10¹³ minor units (S$100 billion; ¥10 trillion; KWD 10 billion) | `InvalidTotal` |
+| People splitting | At most 100 | `TooManyParticipants` (side: shares) |
+| Payers | At most 100 | `TooManyParticipants` (side: payers) |
+| Amount paid by one payer | 1 to the expense total | `InvalidPayerAmount` |
+| One person's input | Exact: 0 to the total. Percent: 0 to 10,000 (100.00%). Shares: 0 to 1,000 | `ShareTooLarge` |
+
+With these caps, `A · w` is at most 10¹³ × 10⁵ = 10¹⁸, below the 64-bit maximum of about 9.2 × 10¹⁸. The weight sum is at most 10⁵ in shares mode and exactly 10,000 in percent mode. Every sum of payer amounts or inputs is at most 100 × 10¹³, so no addition can overflow either.
 
 **Net effect per expense.** For each person, `net_i = paid_i − owed_i`. Positive means the expense made others owe them; negative means they owe. The sum of all `net_i` within an expense is zero by construction, which is the invariant the nightly audit checks across every expense and every group.
 

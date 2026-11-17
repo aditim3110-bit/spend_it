@@ -1,0 +1,28 @@
+{
+  "type": "split",
+  "description": "A negative weight is rejected.",
+  "currency": "SGD",
+  "total": 1000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 1000
+    }
+  ],
+  "mode": "shares",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": -1
+    },
+    {
+      "id": "ben",
+      "value": 2
+    }
+  ],
+  "expect_error": {
+    "code": "NegativeShare",
+    "side": "shares",
+    "participant_id": "aditi"
+  }
+}

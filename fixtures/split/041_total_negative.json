@@ -1,0 +1,24 @@
+{
+  "type": "split",
+  "description": "A negative total is rejected.",
+  "currency": "SGD",
+  "total": -100,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": -100
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    }
+  ],
+  "expect_error": {
+    "code": "InvalidTotal"
+  }
+}

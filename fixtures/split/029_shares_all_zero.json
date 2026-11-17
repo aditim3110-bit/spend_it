@@ -1,0 +1,26 @@
+{
+  "type": "split",
+  "description": "Every weight is 0: nothing to divide by.",
+  "currency": "SGD",
+  "total": 1000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 1000
+    }
+  ],
+  "mode": "shares",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 0
+    },
+    {
+      "id": "ben",
+      "value": 0
+    }
+  ],
+  "expect_error": {
+    "code": "ZeroTotalWeight"
+  }
+}

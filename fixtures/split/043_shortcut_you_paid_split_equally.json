@@ -1,0 +1,36 @@
+{
+  "type": "shortcut",
+  "description": "You paid S$84.51, split equally: 42.25 each + 1 cent to you as payer. Ben owes you 42.25.",
+  "currency": "SGD",
+  "total": 8451,
+  "shortcut": "you_paid_split_equally",
+  "you": "aditi",
+  "other": "ben",
+  "expect": {
+    "mode": "equal",
+    "payers": [
+      {
+        "id": "aditi",
+        "amount": 8451
+      }
+    ],
+    "inputs": [
+      {
+        "id": "aditi"
+      },
+      {
+        "id": "ben"
+      }
+    ],
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 4226
+      },
+      {
+        "id": "ben",
+        "owed": 4225
+      }
+    ]
+  }
+}

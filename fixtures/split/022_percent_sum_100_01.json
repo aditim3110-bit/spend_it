@@ -1,0 +1,31 @@
+{
+  "type": "split",
+  "description": "Percentages add to 100.01%: rejected, 0.01% too many.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 10000
+    }
+  ],
+  "mode": "percent",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 3334
+    },
+    {
+      "id": "ben",
+      "value": 3334
+    },
+    {
+      "id": "chen",
+      "value": 3333
+    }
+  ],
+  "expect_error": {
+    "code": "PercentSumInvalid",
+    "remainder": -1
+  }
+}

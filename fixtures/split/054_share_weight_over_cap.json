@@ -1,0 +1,28 @@
+{
+  "type": "split",
+  "description": "1001 shares for one person is over the 1000 maximum.",
+  "currency": "SGD",
+  "total": 1000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 1000
+    }
+  ],
+  "mode": "shares",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 1001
+    },
+    {
+      "id": "ben",
+      "value": 1
+    }
+  ],
+  "expect_error": {
+    "code": "ShareTooLarge",
+    "side": "shares",
+    "participant_id": "aditi"
+  }
+}

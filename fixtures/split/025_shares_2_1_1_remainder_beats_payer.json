@@ -1,0 +1,43 @@
+{
+  "type": "split",
+  "description": "S$100.01 at 2:1:1, Chen paid. Exact shares 5000.5 / 2500.25 / 2500.25; Aditi has the largest fraction and gets the cent.",
+  "currency": "SGD",
+  "total": 10001,
+  "payers": [
+    {
+      "id": "chen",
+      "amount": 10001
+    }
+  ],
+  "mode": "shares",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 2
+    },
+    {
+      "id": "ben",
+      "value": 1
+    },
+    {
+      "id": "chen",
+      "value": 1
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 5001
+      },
+      {
+        "id": "ben",
+        "owed": 2500
+      },
+      {
+        "id": "chen",
+        "owed": 2500
+      }
+    ]
+  }
+}

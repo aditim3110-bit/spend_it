@@ -1,0 +1,27 @@
+{
+  "type": "split",
+  "description": "One cent over the S$100 billion maximum.",
+  "currency": "SGD",
+  "total": 10000000000001,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 10000000000001
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    },
+    {
+      "id": "chen"
+    }
+  ],
+  "expect_error": {
+    "code": "InvalidTotal"
+  }
+}

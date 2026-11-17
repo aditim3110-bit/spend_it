@@ -1,0 +1,28 @@
+{
+  "type": "split",
+  "description": "One person owes S$100.01 of a S$100.00 bill.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 10000
+    }
+  ],
+  "mode": "exact",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 10001
+    },
+    {
+      "id": "ben",
+      "value": 0
+    }
+  ],
+  "expect_error": {
+    "code": "ShareTooLarge",
+    "side": "shares",
+    "participant_id": "aditi"
+  }
+}

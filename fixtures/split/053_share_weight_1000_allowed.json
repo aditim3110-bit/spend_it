@@ -1,0 +1,35 @@
+{
+  "type": "split",
+  "description": "1000 shares vs 1 share of S$10.01: S$10.00 and 1 cent.",
+  "currency": "SGD",
+  "total": 1001,
+  "payers": [
+    {
+      "id": "ben",
+      "amount": 1001
+    }
+  ],
+  "mode": "shares",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 1000
+    },
+    {
+      "id": "ben",
+      "value": 1
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 1000
+      },
+      {
+        "id": "ben",
+        "owed": 1
+      }
+    ]
+  }
+}

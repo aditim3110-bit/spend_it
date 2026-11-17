@@ -1,0 +1,29 @@
+{
+  "type": "split",
+  "description": "A payer with a negative amount is rejected.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 10000
+    },
+    {
+      "id": "ben",
+      "amount": -500
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    }
+  ],
+  "expect_error": {
+    "code": "InvalidPayerAmount",
+    "participant_id": "ben"
+  }
+}

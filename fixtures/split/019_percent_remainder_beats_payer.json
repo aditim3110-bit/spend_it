@@ -1,0 +1,43 @@
+{
+  "type": "split",
+  "description": "33.33/33.33/33.34% of S$10.00, Ben paid. Chen's exact share is 3.334, the largest fraction, so Chen gets the cent; payer only breaks exact ties.",
+  "currency": "SGD",
+  "total": 1000,
+  "payers": [
+    {
+      "id": "ben",
+      "amount": 1000
+    }
+  ],
+  "mode": "percent",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 3333
+    },
+    {
+      "id": "ben",
+      "value": 3333
+    },
+    {
+      "id": "chen",
+      "value": 3334
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 333
+      },
+      {
+        "id": "ben",
+        "owed": 333
+      },
+      {
+        "id": "chen",
+        "owed": 334
+      }
+    ]
+  }
+}

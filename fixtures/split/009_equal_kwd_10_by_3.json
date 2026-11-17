@@ -1,0 +1,40 @@
+{
+  "type": "split",
+  "description": "KWD 10.000 among 3 (dinar has 3 decimals, so 10000 fils), Chen paid. 3333 each + 1 fils to Chen.",
+  "currency": "KWD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "chen",
+      "amount": 10000
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    },
+    {
+      "id": "chen"
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 3333
+      },
+      {
+        "id": "ben",
+        "owed": 3333
+      },
+      {
+        "id": "chen",
+        "owed": 3334
+      }
+    ]
+  }
+}

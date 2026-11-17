@@ -1,0 +1,30 @@
+{
+  "type": "split",
+  "description": "Payers add to 99.99 on a S$100.00 bill.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 5000
+    },
+    {
+      "id": "ben",
+      "amount": 4999
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    }
+  ],
+  "expect_error": {
+    "code": "SumMismatch",
+    "side": "payers",
+    "remainder": 1
+  }
+}

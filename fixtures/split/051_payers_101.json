@@ -1,0 +1,422 @@
+{
+  "type": "split",
+  "description": "101 payers is over the 100 maximum.",
+  "currency": "SGD",
+  "total": 101,
+  "payers": [
+    {
+      "id": "p000",
+      "amount": 1
+    },
+    {
+      "id": "p001",
+      "amount": 1
+    },
+    {
+      "id": "p002",
+      "amount": 1
+    },
+    {
+      "id": "p003",
+      "amount": 1
+    },
+    {
+      "id": "p004",
+      "amount": 1
+    },
+    {
+      "id": "p005",
+      "amount": 1
+    },
+    {
+      "id": "p006",
+      "amount": 1
+    },
+    {
+      "id": "p007",
+      "amount": 1
+    },
+    {
+      "id": "p008",
+      "amount": 1
+    },
+    {
+      "id": "p009",
+      "amount": 1
+    },
+    {
+      "id": "p010",
+      "amount": 1
+    },
+    {
+      "id": "p011",
+      "amount": 1
+    },
+    {
+      "id": "p012",
+      "amount": 1
+    },
+    {
+      "id": "p013",
+      "amount": 1
+    },
+    {
+      "id": "p014",
+      "amount": 1
+    },
+    {
+      "id": "p015",
+      "amount": 1
+    },
+    {
+      "id": "p016",
+      "amount": 1
+    },
+    {
+      "id": "p017",
+      "amount": 1
+    },
+    {
+      "id": "p018",
+      "amount": 1
+    },
+    {
+      "id": "p019",
+      "amount": 1
+    },
+    {
+      "id": "p020",
+      "amount": 1
+    },
+    {
+      "id": "p021",
+      "amount": 1
+    },
+    {
+      "id": "p022",
+      "amount": 1
+    },
+    {
+      "id": "p023",
+      "amount": 1
+    },
+    {
+      "id": "p024",
+      "amount": 1
+    },
+    {
+      "id": "p025",
+      "amount": 1
+    },
+    {
+      "id": "p026",
+      "amount": 1
+    },
+    {
+      "id": "p027",
+      "amount": 1
+    },
+    {
+      "id": "p028",
+      "amount": 1
+    },
+    {
+      "id": "p029",
+      "amount": 1
+    },
+    {
+      "id": "p030",
+      "amount": 1
+    },
+    {
+      "id": "p031",
+      "amount": 1
+    },
+    {
+      "id": "p032",
+      "amount": 1
+    },
+    {
+      "id": "p033",
+      "amount": 1
+    },
+    {
+      "id": "p034",
+      "amount": 1
+    },
+    {
+      "id": "p035",
+      "amount": 1
+    },
+    {
+      "id": "p036",
+      "amount": 1
+    },
+    {
+      "id": "p037",
+      "amount": 1
+    },
+    {
+      "id": "p038",
+      "amount": 1
+    },
+    {
+      "id": "p039",
+      "amount": 1
+    },
+    {
+      "id": "p040",
+      "amount": 1
+    },
+    {
+      "id": "p041",
+      "amount": 1
+    },
+    {
+      "id": "p042",
+      "amount": 1
+    },
+    {
+      "id": "p043",
+      "amount": 1
+    },
+    {
+      "id": "p044",
+      "amount": 1
+    },
+    {
+      "id": "p045",
+      "amount": 1
+    },
+    {
+      "id": "p046",
+      "amount": 1
+    },
+    {
+      "id": "p047",
+      "amount": 1
+    },
+    {
+      "id": "p048",
+      "amount": 1
+    },
+    {
+      "id": "p049",
+      "amount": 1
+    },
+    {
+      "id": "p050",
+      "amount": 1
+    },
+    {
+      "id": "p051",
+      "amount": 1
+    },
+    {
+      "id": "p052",
+      "amount": 1
+    },
+    {
+      "id": "p053",
+      "amount": 1
+    },
+    {
+      "id": "p054",
+      "amount": 1
+    },
+    {
+      "id": "p055",
+      "amount": 1
+    },
+    {
+      "id": "p056",
+      "amount": 1
+    },
+    {
+      "id": "p057",
+      "amount": 1
+    },
+    {
+      "id": "p058",
+      "amount": 1
+    },
+    {
+      "id": "p059",
+      "amount": 1
+    },
+    {
+      "id": "p060",
+      "amount": 1
+    },
+    {
+      "id": "p061",
+      "amount": 1
+    },
+    {
+      "id": "p062",
+      "amount": 1
+    },
+    {
+      "id": "p063",
+      "amount": 1
+    },
+    {
+      "id": "p064",
+      "amount": 1
+    },
+    {
+      "id": "p065",
+      "amount": 1
+    },
+    {
+      "id": "p066",
+      "amount": 1
+    },
+    {
+      "id": "p067",
+      "amount": 1
+    },
+    {
+      "id": "p068",
+      "amount": 1
+    },
+    {
+      "id": "p069",
+      "amount": 1
+    },
+    {
+      "id": "p070",
+      "amount": 1
+    },
+    {
+      "id": "p071",
+      "amount": 1
+    },
+    {
+      "id": "p072",
+      "amount": 1
+    },
+    {
+      "id": "p073",
+      "amount": 1
+    },
+    {
+      "id": "p074",
+      "amount": 1
+    },
+    {
+      "id": "p075",
+      "amount": 1
+    },
+    {
+      "id": "p076",
+      "amount": 1
+    },
+    {
+      "id": "p077",
+      "amount": 1
+    },
+    {
+      "id": "p078",
+      "amount": 1
+    },
+    {
+      "id": "p079",
+      "amount": 1
+    },
+    {
+      "id": "p080",
+      "amount": 1
+    },
+    {
+      "id": "p081",
+      "amount": 1
+    },
+    {
+      "id": "p082",
+      "amount": 1
+    },
+    {
+      "id": "p083",
+      "amount": 1
+    },
+    {
+      "id": "p084",
+      "amount": 1
+    },
+    {
+      "id": "p085",
+      "amount": 1
+    },
+    {
+      "id": "p086",
+      "amount": 1
+    },
+    {
+      "id": "p087",
+      "amount": 1
+    },
+    {
+      "id": "p088",
+      "amount": 1
+    },
+    {
+      "id": "p089",
+      "amount": 1
+    },
+    {
+      "id": "p090",
+      "amount": 1
+    },
+    {
+      "id": "p091",
+      "amount": 1
+    },
+    {
+      "id": "p092",
+      "amount": 1
+    },
+    {
+      "id": "p093",
+      "amount": 1
+    },
+    {
+      "id": "p094",
+      "amount": 1
+    },
+    {
+      "id": "p095",
+      "amount": 1
+    },
+    {
+      "id": "p096",
+      "amount": 1
+    },
+    {
+      "id": "p097",
+      "amount": 1
+    },
+    {
+      "id": "p098",
+      "amount": 1
+    },
+    {
+      "id": "p099",
+      "amount": 1
+    },
+    {
+      "id": "p100",
+      "amount": 1
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    }
+  ],
+  "expect_error": {
+    "code": "TooManyParticipants",
+    "side": "payers"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "type": "split",
+  "description": "S$84.50, Aditi paid and is the only one splitting.",
+  "currency": "SGD",
+  "total": 8450,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 8450
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 8450
+      }
+    ]
+  }
+}

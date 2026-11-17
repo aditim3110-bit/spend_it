@@ -1,0 +1,271 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spendit.app/schemas/split-fixture.json",
+  "title": "Split engine fixture",
+  "description": "One test case for the split engine. Python and Swift must both pass every case. All money is integer minor units. Percentages are integer basis points (10000 = 100.00%).",
+  "type": "object",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/splitCase"
+    },
+    {
+      "$ref": "#/$defs/shortcutCase"
+    }
+  ],
+  "$defs": {
+    "id": {
+      "description": "Participant ID. Lowercase ASCII; compared byte by byte for tie-breaks.",
+      "type": "string",
+      "pattern": "^[a-z0-9_-]{1,64}$"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "mode": {
+      "enum": [
+        "equal",
+        "exact",
+        "percent",
+        "shares"
+      ]
+    },
+    "payer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "amount"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "amount": {
+          "type": "integer"
+        }
+      }
+    },
+    "input": {
+      "description": "One participant. `value` is absent for equal; exact = owed minor units; percent = basis points; shares = integer weight.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "value": {
+          "type": "integer"
+        }
+      }
+    },
+    "owed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "owed"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "owed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "expectError": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "code"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "SumMismatch",
+            "NegativeShare",
+            "EmptyParticipants",
+            "PercentSumInvalid",
+            "ZeroTotalWeight",
+            "DuplicateParticipant",
+            "InvalidTotal",
+            "InvalidPayerAmount",
+            "UnsupportedCurrency",
+            "TooManyParticipants",
+            "ShareTooLarge"
+          ]
+        },
+        "side": {
+          "enum": [
+            "payers",
+            "shares"
+          ]
+        },
+        "participant_id": {
+          "$ref": "#/$defs/id"
+        },
+        "remainder": {
+          "description": "Target minus actual sum: minor units for SumMismatch, basis points for PercentSumInvalid. Positive = short, negative = over.",
+          "type": "integer"
+        }
+      }
+    },
+    "splitCase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "description",
+        "currency",
+        "total",
+        "payers",
+        "mode",
+        "inputs"
+      ],
+      "properties": {
+        "type": {
+          "const": "split"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        },
+        "total": {
+          "type": "integer"
+        },
+        "payers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/payer"
+          }
+        },
+        "mode": {
+          "$ref": "#/$defs/mode"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/input"
+          }
+        },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "shares"
+          ],
+          "properties": {
+            "shares": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/owed"
+              }
+            }
+          }
+        },
+        "expect_error": {
+          "$ref": "#/$defs/expectError"
+        }
+      },
+      "oneOf": [
+        {
+          "required": [
+            "expect"
+          ]
+        },
+        {
+          "required": [
+            "expect_error"
+          ]
+        }
+      ]
+    },
+    "shortcutCase": {
+      "description": "A two-person shortcut (PRD section 7). The builder must produce exactly `expect.mode/payers/inputs`, and the engine must then produce `expect.shares`.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "description",
+        "currency",
+        "total",
+        "shortcut",
+        "you",
+        "other",
+        "expect"
+      ],
+      "properties": {
+        "type": {
+          "const": "shortcut"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "currency": {
+          "$ref": "#/$defs/currency"
+        },
+        "total": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "shortcut": {
+          "enum": [
+            "you_paid_split_equally",
+            "you_are_owed_full",
+            "they_paid_split_equally",
+            "they_are_owed_full"
+          ]
+        },
+        "you": {
+          "$ref": "#/$defs/id"
+        },
+        "other": {
+          "$ref": "#/$defs/id"
+        },
+        "expect": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mode",
+            "payers",
+            "inputs",
+            "shares"
+          ],
+          "properties": {
+            "mode": {
+              "$ref": "#/$defs/mode"
+            },
+            "payers": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/payer"
+              }
+            },
+            "inputs": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/input"
+              }
+            },
+            "shares": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/owed"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

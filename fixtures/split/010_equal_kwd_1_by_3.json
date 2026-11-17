@@ -1,0 +1,40 @@
+{
+  "type": "split",
+  "description": "KWD 1.000 among 3, Ben paid. 333 each + 1 fils to Ben.",
+  "currency": "KWD",
+  "total": 1000,
+  "payers": [
+    {
+      "id": "ben",
+      "amount": 1000
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    },
+    {
+      "id": "chen"
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 333
+      },
+      {
+        "id": "ben",
+        "owed": 334
+      },
+      {
+        "id": "chen",
+        "owed": 333
+      }
+    ]
+  }
+}

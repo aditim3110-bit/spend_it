@@ -1,0 +1,38 @@
+{
+  "type": "shortcut",
+  "description": "You paid S$84.50 and Ben owes all of it.",
+  "currency": "SGD",
+  "total": 8450,
+  "shortcut": "you_are_owed_full",
+  "you": "aditi",
+  "other": "ben",
+  "expect": {
+    "mode": "exact",
+    "payers": [
+      {
+        "id": "aditi",
+        "amount": 8450
+      }
+    ],
+    "inputs": [
+      {
+        "id": "aditi",
+        "value": 0
+      },
+      {
+        "id": "ben",
+        "value": 8450
+      }
+    ],
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 0
+      },
+      {
+        "id": "ben",
+        "owed": 8450
+      }
+    ]
+  }
+}

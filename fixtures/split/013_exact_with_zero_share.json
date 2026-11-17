@@ -1,0 +1,35 @@
+{
+  "type": "split",
+  "description": "S$50.00: Aditi paid, owes 0; Ben owes it all. Aditi's zero row is kept.",
+  "currency": "SGD",
+  "total": 5000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 5000
+    }
+  ],
+  "mode": "exact",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 0
+    },
+    {
+      "id": "ben",
+      "value": 5000
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 0
+      },
+      {
+        "id": "ben",
+        "owed": 5000
+      }
+    ]
+  }
+}

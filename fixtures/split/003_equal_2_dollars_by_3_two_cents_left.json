@@ -1,0 +1,40 @@
+{
+  "type": "split",
+  "description": "S$2.00 among 3, Chen paid. 66 each + 2 cents left: Chen (payer) gets one, Aditi (first ID) the other.",
+  "currency": "SGD",
+  "total": 200,
+  "payers": [
+    {
+      "id": "chen",
+      "amount": 200
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    },
+    {
+      "id": "chen"
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 67
+      },
+      {
+        "id": "ben",
+        "owed": 66
+      },
+      {
+        "id": "chen",
+        "owed": 67
+      }
+    ]
+  }
+}

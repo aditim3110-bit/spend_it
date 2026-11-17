@@ -1,0 +1,40 @@
+{
+  "type": "split",
+  "description": "2 cents among 3, Aditi paid. Aditi (payer) 1, Ben (next ID) 1, Chen 0.",
+  "currency": "SGD",
+  "total": 2,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 2
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    },
+    {
+      "id": "chen"
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 1
+      },
+      {
+        "id": "ben",
+        "owed": 1
+      },
+      {
+        "id": "chen",
+        "owed": 0
+      }
+    ]
+  }
+}

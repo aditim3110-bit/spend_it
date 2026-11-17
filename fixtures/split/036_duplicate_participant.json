@@ -1,0 +1,29 @@
+{
+  "type": "split",
+  "description": "Aditi listed twice among the people splitting.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "ben",
+      "amount": 10000
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    }
+  ],
+  "expect_error": {
+    "code": "DuplicateParticipant",
+    "side": "shares",
+    "participant_id": "aditi"
+  }
+}

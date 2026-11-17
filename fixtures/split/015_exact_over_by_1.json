@@ -1,0 +1,32 @@
+{
+  "type": "split",
+  "description": "Exact amounts add to 100.01 on a S$100.00 bill: 1 cent too many.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 10000
+    }
+  ],
+  "mode": "exact",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 3334
+    },
+    {
+      "id": "ben",
+      "value": 3334
+    },
+    {
+      "id": "chen",
+      "value": 3333
+    }
+  ],
+  "expect_error": {
+    "code": "SumMismatch",
+    "side": "shares",
+    "remainder": -1
+  }
+}

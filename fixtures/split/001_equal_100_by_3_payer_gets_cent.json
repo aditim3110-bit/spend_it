@@ -1,0 +1,40 @@
+{
+  "type": "split",
+  "description": "S$100.00 equally among 3, Ben paid. 3333 each + 1 cent left; tie goes to the payer, Ben.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "ben",
+      "amount": 10000
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    },
+    {
+      "id": "chen"
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 3333
+      },
+      {
+        "id": "ben",
+        "owed": 3334
+      },
+      {
+        "id": "chen",
+        "owed": 3333
+      }
+    ]
+  }
+}

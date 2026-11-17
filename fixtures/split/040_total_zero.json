@@ -1,0 +1,24 @@
+{
+  "type": "split",
+  "description": "A S$0.00 expense is rejected.",
+  "currency": "SGD",
+  "total": 0,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 0
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    }
+  ],
+  "expect_error": {
+    "code": "InvalidTotal"
+  }
+}

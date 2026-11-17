@@ -1,0 +1,43 @@
+{
+  "type": "split",
+  "description": "S$84.50 typed exactly: 40.00 + 24.50 + 20.00.",
+  "currency": "SGD",
+  "total": 8450,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 8450
+    }
+  ],
+  "mode": "exact",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 4000
+    },
+    {
+      "id": "ben",
+      "value": 2450
+    },
+    {
+      "id": "chen",
+      "value": 2000
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 4000
+      },
+      {
+        "id": "ben",
+        "owed": 2450
+      },
+      {
+        "id": "chen",
+        "owed": 2000
+      }
+    ]
+  }
+}

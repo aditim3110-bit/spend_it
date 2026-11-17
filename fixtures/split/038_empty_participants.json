@@ -1,0 +1,18 @@
+{
+  "type": "split",
+  "description": "Nobody to split with.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 10000
+    }
+  ],
+  "mode": "equal",
+  "inputs": [],
+  "expect_error": {
+    "code": "EmptyParticipants",
+    "side": "shares"
+  }
+}

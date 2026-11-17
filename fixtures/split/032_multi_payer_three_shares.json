@@ -1,0 +1,51 @@
+{
+  "type": "split",
+  "description": "S$90.00 paid 30/30/30, shares 1:2:3 → 15 / 30 / 45.",
+  "currency": "SGD",
+  "total": 9000,
+  "payers": [
+    {
+      "id": "aditi",
+      "amount": 3000
+    },
+    {
+      "id": "ben",
+      "amount": 3000
+    },
+    {
+      "id": "chen",
+      "amount": 3000
+    }
+  ],
+  "mode": "shares",
+  "inputs": [
+    {
+      "id": "aditi",
+      "value": 1
+    },
+    {
+      "id": "ben",
+      "value": 2
+    },
+    {
+      "id": "chen",
+      "value": 3
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "aditi",
+        "owed": 1500
+      },
+      {
+        "id": "ben",
+        "owed": 3000
+      },
+      {
+        "id": "chen",
+        "owed": 4500
+      }
+    ]
+  }
+}

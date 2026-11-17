@@ -1,0 +1,20 @@
+{
+  "type": "split",
+  "description": "Nobody paid.",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "aditi"
+    },
+    {
+      "id": "ben"
+    }
+  ],
+  "expect_error": {
+    "code": "EmptyParticipants",
+    "side": "payers"
+  }
+}

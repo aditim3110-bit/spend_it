@@ -1,0 +1,40 @@
+{
+  "type": "split",
+  "description": "Real-looking UUID IDs; payer isn't splitting, so the cent goes to the ID that sorts first byte-by-byte (0a1b… before 9f3c… before c4d5…).",
+  "currency": "SGD",
+  "total": 10000,
+  "payers": [
+    {
+      "id": "ffeeddcc-0000-4000-8000-000000000004",
+      "amount": 10000
+    }
+  ],
+  "mode": "equal",
+  "inputs": [
+    {
+      "id": "9f3c2b1a-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "0a1b2c3d-0000-4000-8000-000000000001"
+    },
+    {
+      "id": "c4d5e6f7-0000-4000-8000-000000000003"
+    }
+  ],
+  "expect": {
+    "shares": [
+      {
+        "id": "9f3c2b1a-0000-4000-8000-000000000002",
+        "owed": 3333
+      },
+      {
+        "id": "0a1b2c3d-0000-4000-8000-000000000001",
+        "owed": 3334
+      },
+      {
+        "id": "c4d5e6f7-0000-4000-8000-000000000003",
+        "owed": 3333
+      }
+    ]
+  }
+}
