@@ -25,7 +25,7 @@ from app.core import pagination
 from app.core.errors import ProblemError
 from app.core.split_errors import split_problem
 from app.models import Expense, FriendSource, User
-from app.models.expense import RevisionReason, SplitModeDb
+from app.models.expense import ExpenseKind, RevisionReason, SplitModeDb
 from app.repositories import balances as balance_repo
 from app.repositories import expenses as repo
 from app.repositories import friends as friend_repo
@@ -83,6 +83,10 @@ class ExpenseService:
     async def edit(self, user: User, expense_id: uuid.UUID, body: ExpenseIn) -> ExpenseView:
         _require_name(user)
         expense, current = await self._for_change(user, expense_id)
+        if expense.kind is ExpenseKind.SETTLEMENT:
+            raise ProblemError(
+                409, "is-a-settlement", "This is a payment. Edit it with PUT /v1/settlements/{id}."
+            )
         if expense.deleted_at is not None:
             raise ProblemError(
                 409, "expense-deleted", "This expense was deleted. Restore it to edit it."

@@ -13,7 +13,12 @@ from sqlalchemy import exists, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Expense, ExpensePayer, ExpenseRevision, ExpenseShare
-from app.models.expense import ContextType, ExpenseKind, RevisionReason, SplitModeDb
+from app.models.expense import (
+    ContextType,
+    ExpenseKind,
+    RevisionReason,
+    SplitModeDb,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,11 +54,16 @@ class RevisionRows:
 # --- Writes -------------------------------------------------------------------------------
 
 
-async def create(session: AsyncSession, user_id: uuid.UUID, data: RevisionData) -> Expense:
-    """A new direct expense with revision 1. The caller commits."""
+async def create(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    data: RevisionData,
+    kind: ExpenseKind = ExpenseKind.EXPENSE,
+) -> Expense:
+    """A new direct expense (or settlement) with revision 1. The caller commits."""
     expense = Expense(
         id=uuid.uuid4(),
-        kind=ExpenseKind.EXPENSE,
+        kind=kind,
         context_type=ContextType.DIRECT,
         group_id=None,
         expense_date=data.expense_date,

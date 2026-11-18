@@ -15,7 +15,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
-from app.models.expense import ContextType, ExpenseKind, RevisionReason, SplitModeDb
+from app.models.expense import (
+    ContextType,
+    ExpenseKind,
+    RevisionReason,
+    SplitModeDb,
+)
 from app.services.split_engine import SplitMode
 from app.services.split_engine.limits import MAX_PARTICIPANTS, MAX_PAYERS
 
@@ -92,7 +97,10 @@ class RevisionOut(Strict):
 
 
 class ExpenseOut(Strict):
-    """The current version. `rev_no` counts the versions (1 = never edited)."""
+    """The current version. `rev_no` counts the versions (1 = never edited).
+
+    kind "settlement" is a recorded payment: the one payer handed money to the one person
+    in `shares`. Payments show in the feed alongside expenses."""
 
     id: uuid.UUID
     kind: ExpenseKind

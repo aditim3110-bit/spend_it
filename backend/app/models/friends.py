@@ -16,6 +16,7 @@ class FriendSource(StrEnum):
     NEARBY = "nearby"  # Phase 2, Bluetooth "Add nearby"
     CONTACTS = "contacts"
     EXPENSE = "expense"
+    GROUP = "group"  # joined the same group (PRD section 9)
 
 
 class Friendship(CreatedAtMixin, Base):

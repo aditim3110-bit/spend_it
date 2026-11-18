@@ -111,6 +111,28 @@ async def expected_from_ledger(
     return merge(*expected)
 
 
+async def owed_between(
+    session: AsyncSession, payer: uuid.UUID, receiver: uuid.UUID, currency: str
+) -> int:
+    """How much `payer` owes `receiver` in this currency, across every context (PRD
+    section 8, "one payment per person"). Zero or negative means nothing is owed."""
+    rows = await repo.between(session, payer, receiver)
+    return sum(
+        _from_my_side(receiver, b.party_a, b.amount_minor) for b in rows if b.currency == currency
+    )
+
+
+async def member_balance(
+    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+) -> dict[str, int]:
+    """This member's overall position in one group, per currency (positive: they're owed).
+    Non-zero means they can't leave or be removed yet (PRD section 9)."""
+    totals: dict[str, int] = defaultdict(int)
+    for b in await repo.in_group_for(session, group_id, user_id):
+        totals[b.currency] += _from_my_side(user_id, b.party_a, b.amount_minor)
+    return {cur: amt for cur, amt in sorted(totals.items()) if amt}
+
+
 # --- Reading balances ---------------------------------------------------------------------
 
 

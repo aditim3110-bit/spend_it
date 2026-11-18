@@ -4,6 +4,8 @@ Hypothesis invents random sequences of "add / edit / delete / restore" by random
 and runs them through the real ExpenseService and Postgres. After each sequence we check
 rules that must hold however the expenses were made:
 
+- payments ("settle" steps) leave the pair square when paid in full, and flip it when
+  overpaid;
 - every saved revision balances: payers = shares = amount;
 - what's stored is exactly what the split engine computes from the stored inputs (the
   server decides, and it's reproducible: balances can be rebuilt from revisions);
@@ -21,7 +23,7 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any
 
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, event, given, settings
 from hypothesis import strategies as st
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -32,8 +34,10 @@ from app.models import FriendSource, User
 from app.repositories import balances as balance_repo
 from app.repositories import friends as friend_repo
 from app.schemas.expenses import ExpenseIn
-from app.services.balances import expected_from_ledger
+from app.schemas.settlements import SettlementIn
+from app.services.balances import expected_from_ledger, owed_between
 from app.services.expenses import ExpenseService
+from app.services.settlements import SettlementService
 from app.services.split_engine import Payer, ShareInput, SplitMode, SplitRequest, compute_split
 from tests.support.database import TEST_DATABASE_URL
 
@@ -84,11 +88,25 @@ def expense_specs(draw: st.DrawFn, actor: int) -> dict[str, Any]:
 @st.composite
 def operations(draw: st.DrawFn) -> list[tuple]:
     ops: list[tuple] = []
-    for _ in range(draw(st.integers(1, 8))):
+    for _ in range(draw(st.integers(1, 10))):
         actor = draw(st.integers(0, PEOPLE - 1))
-        kind = draw(st.sampled_from(["create", "create", "edit", "edit", "delete", "restore"]))
+        kind = draw(
+            st.sampled_from(
+                ["create", "create", "edit", "edit", "delete", "restore", "settle", "settle"]
+            )
+        )
         target = draw(st.integers(0, 7))  # which earlier expense (modulo how many exist)
-        spec = draw(expense_specs(actor)) if kind in ("create", "edit") else None
+        if kind in ("create", "edit"):
+            spec = draw(expense_specs(actor))
+        elif kind == "settle":
+            # Pay back one of the debts that exist when the step runs, and what share of
+            # it (100 = all of it, 150 = overpaying, which flips who owes whom).
+            spec = {
+                "pick": draw(st.integers(0, 20)),
+                "pct": draw(st.sampled_from([100, 50, 1, 150])),
+            }
+        else:
+            spec = None
         ops.append((kind, actor, target, spec))
     return ops
 
@@ -104,6 +122,7 @@ class Expected:
     people: set[int]  # in the current version
     ever: set[int]  # in any version (they can still view it)
     deleted: bool
+    settlement: bool = False
 
 
 def _body(spec: dict[str, Any], users: list[User]) -> ExpenseIn:
@@ -122,6 +141,16 @@ def _body(spec: dict[str, Any], users: list[User]) -> ExpenseIn:
                 ],
             },
         }
+    )
+
+
+def _payment_in(payer: User, receiver: User, amount: int, currency: str) -> SettlementIn:
+    return SettlementIn(
+        payer_id=payer.id,
+        receiver_id=receiver.id,
+        amount_minor=amount,
+        currency=currency,
+        expense_date=date(2026, 11, 18),
     )
 
 
@@ -155,6 +184,7 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
     await session.commit()
 
     service = ExpenseService(session)
+    payments = SettlementService(session)
     model: list[Expected] = []
 
     for kind, actor, target, spec in ops:
@@ -164,6 +194,32 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
             people = _people(spec)
             model.append(Expected(view.expense.id, 1, spec["amount"], people, people, False))
             continue
+        if kind == "settle":
+            # Pick one of the debts that exist right now; the person who owes records it.
+            debts = [
+                (debtor, other, currency, owed)
+                for debtor in range(PEOPLE)
+                for other in range(PEOPLE)
+                if other != debtor
+                for currency in CURRENCIES
+                if (
+                    owed := await owed_between(session, users[debtor].id, users[other].id, currency)
+                )
+                > 0
+            ]
+            if not debts:
+                continue  # nobody owes anybody anything yet
+            debtor, other, currency, owed = debts[spec["pick"] % len(debts)]
+            payer, receiver = users[debtor], users[other]
+            amount = max(1, owed * spec["pct"] // 100)
+            event(f"payment recorded ({spec['pct']}% of the debt)")
+            view = await payments.record(payer, _payment_in(payer, receiver, amount, currency))
+            pair = {debtor, other}
+            model.append(Expected(view.expense.id, 1, amount, pair, pair, False, settlement=True))
+            # What's owed afterwards is exactly the old debt minus the payment.
+            after = await owed_between(session, payer.id, receiver.id, currency)
+            assert after == owed - amount
+            continue
         if not model:
             continue
         exp = model[target % len(model)]
@@ -171,7 +227,7 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
         try:
             if kind == "edit":
                 await service.edit(user, exp.id, _body(spec, users))
-                assert allowed and not exp.deleted
+                assert allowed and not exp.deleted and not exp.settlement
                 exp.rev_no += 1
                 exp.amount = spec["amount"]
                 exp.people = _people(spec)
@@ -186,8 +242,9 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
                 exp.deleted = False
         except ProblemError as err:
             # The only refusals possible here: never on it (404, as if it didn't exist),
-            # no longer on it (403), or editing a deleted one (409). All are raised before
-            # anything is written, so the session carries on.
+            # no longer on it (403), or editing a deleted one or a payment through the
+            # expense route (409). All are raised before anything is written, so the
+            # session carries on.
             if actor not in exp.ever:
                 expected_status = 404
             elif not allowed:
@@ -298,7 +355,7 @@ async def _check_balances(session: AsyncSession, users: list[User]) -> None:
     assert {k: v for k, v in from_balances.items() if v} == from_ledger
 
 
-@settings(max_examples=40, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@settings(max_examples=60, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(operations())
 def test_ledger_stays_consistent(migrated_database: None, ops: list[tuple]) -> None:
     asyncio.run(_run(ops))

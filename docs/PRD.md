@@ -300,7 +300,7 @@ A balance is the sum of per-expense net effects between two people in one curren
 - Within a group, raw pairwise debts can form chains (A owes B 10, B owes C 10). Smart Settle turns that into one payment, A pays C 10. Simplification computes each member's overall net position and produces the minimum set of transfers that settles everyone: sort debtors and creditors, greedily match the largest debtor to the largest creditor, repeat. This is Splitwise's behaviour and users expect it.
 - Simplification never changes anyone's net position; it only changes who pays whom. The UI makes this explicit ("You owe Ravi S$10 instead of Aditi because Aditi owes Ravi").
 - **Only between friends.** A transfer is only rerouted to someone the payer is friends with. Group members become friends when they join (Section 9), so this normally holds; it matters only if someone has removed a friend, in which case that pair is never told to pay each other and the debts route around them.
-- A group admin can turn it off (some groups prefer to track exactly who paid for whom). Then each member pays exactly who they owe.
+- Any group member can turn it off (some groups prefer to track exactly who paid for whom). Then each member pays exactly who they owe.
 - **Groups only.** Debts outside groups are never simplified, even when one expense was shared by three friends without a group: each pair settles directly (Aditi pays Ben, Ben pays Chen). Decided 2026-11-17.
 
 **One payment per person, across everything (decided 2026-11-17)**
@@ -314,7 +314,13 @@ A balance is the sum of per-expense net effects between two people in one curren
 
 **Settlement methods at launch (before the Wallet ships)**
 
-1. **Record a payment** — "I paid Aditi S$42.50 in cash". Creates a settlement expense; the counterparty is notified and can dispute within the activity feed.
+1. **Record a payment** — "I paid Aditi S$42.50 in cash". Creates a settlement expense; the counterparty is notified. Decided 2026-11-17:
+   - **Either person can record it:** the payer ("I paid Aditi") or the receiver ("Ben paid me").
+   - **Any amount.** A payment is simply money that moved. If Chen owes Aditi S$33.33 and pays S$50, Aditi then owes Chen S$16.67. Paying someone you owe nothing works the same way (they then owe you). Two recordings of the same payment both count; either person deletes the duplicate.
+   - **Disputes are deletes:** a payment counts immediately; if it's wrong, either person deletes it (30-day restore, like expenses) and the debt comes back.
+   - **Editable:** either person can change the amount, date or note; each change is a new revision in the history. The two people and the currency stay fixed.
+   - **How it was paid isn't recorded** (cash, bank transfer, PayNow and so on). Friendship isn't required, so paying back someone you've unfriended works.
+   - Payments reduce the balance, not a specific expense: if Ben paid Chen S$10 for his half of a S$20 dinner and Chen later edits the dinner to S$30, Ben owes S$5 more.
 2. **Pay by phone number** (PayNow in Singapore, DuitNow in Malaysia, UPI-by-mobile in India and similar). The debtor copies the creditor's phone number, pays in their own bank or payment app, then returns and confirms "Did the payment go through?" to record it. No money touches SpendIt, so no licence is needed. Most friends already have each other's numbers; for those who don't, the number comes from the **"Request phone number"** flow below, never from sign-in details without asking.
 3. **Settle via Wallet** (Phase 2, Section 11) — instant, recorded automatically.
 
@@ -342,7 +348,7 @@ A balance is the sum of per-expense net effects between two people in one curren
 - `phone_number_requests (id, requester_id, recipient_id, amount_minor, currency, status: pending|shared|declined, created_at, responded_at)`.
 - `phone_number_shares (owner_id, viewer_id, shared_at, revoked_at)`.
 
-**Partial settlement and allocation.** A user can settle any amount up to the balance. Settlements reduce the net balance, not specific expenses, which keeps the model simple; a per-expense "paid" marker is deliberately out of scope.
+**Partial settlement and allocation.** A user can settle any amount, including more than the balance (the difference is then owed back the other way). Settlements reduce the net balance, not specific expenses, which keeps the model simple; a per-expense "paid" marker is deliberately out of scope.
 
 **Reminders.** A creditor can nudge once per debt per 72 hours (push and, if no app, SMS or email). Automatic gentle reminders go out 7 days after a trip group's last expense. All reminder copy is written to be socially safe ("SpendIt reminder" framing, never the creditor's words).
 
@@ -354,18 +360,20 @@ A group is a named container with a member list, a default currency and a defaul
 
 - Create with name, optional cover emoji or photo, type (trip, home, couple, event, other — the type only changes defaults and the suggested icon), default currency, and whether Smart Settle (Section 8) is on (default on).
 - **Joining a group makes you friends with its members.** When someone is added to a group (or joins by invite), they become friends with every current member they weren't already friends with (friendship source `group`). Groups are never required: three friends can share an expense directly without one (Section 7).
-- Add members from Friends, from contacts (hash match), by sharing an invite link, or as an unnamed guest spot that the guest fills in with their own name (Section 15). Invite links are revocable and can be set to require admin approval.
-- Roles: creator is admin; admins can add or remove members, change settings, archive the group. Any member can add and edit expenses.
-- A member can only leave when their balance in the group is zero; otherwise they are prompted to settle first (same rule as Splitwise, and it prevents orphaned debts).
+- Add members from Friends, from contacts (hash match), by sharing an invite link, or as an unnamed guest spot that the guest fills in with their own name (Section 15). Invite links are revocable and can be set to require approval by a member.
+- **Everyone is equal (decided 2026-11-18, like Splitwise): there are no admins or roles.** Any member can add their own friends, remove someone, change the name, type, currency or Smart Settle, archive or unarchive, turn off any invite link, and approve or decline join requests. Any member can add and edit expenses, including ones they're not on (the organiser often logs everything).
+- **Who adds whom (decided 2026-11-17):** any member can add their own friends directly. Anyone else joins through an invite link. Any member can create a link and chooses, per link, whether joining needs approval. Links expire after 14 days. Opening a link first shows the group's name, type and size (no member names). With approval on, the person waits in a "join requests" list that any member can approve or decline.
+- Only current members can see a group; anyone else, including people who have left, gets "not found".
+- A member can only leave, or be removed by another member, when their balance in the group is zero; otherwise they are prompted to settle first (same rule as Splitwise, and it prevents orphaned debts).
 - Per-group default split: equal, or a saved share weighting (the couple with 2 shares). New expenses prefill from it.
 - Group feed: chronological list of expenses and settlements, with filters (mine, unsettled, by member) and a per-member "what I paid / what I owe" summary.
-- Archive, not delete: archived groups are read-only and hidden from the main list; restorable.
+- Archive, not delete: archived groups are read-only (no member, setting, invite or expense changes) and hidden from the main list; any member can unarchive.
 
 **Group balance view.** Two tabs: *Simplified* (who pays whom, minimum transfers) and *Detailed* (pairwise). A "Settle all" action creates the settlement intents for every transfer the current user is on the paying side of.
 
 **Implementation notes**
 
-- Tables: `groups`, `group_members (group_id, user_id|guest_id, role, joined_at, left_at)`, `group_invites (token, created_by, expires_at, requires_approval)`.
+- Tables: `groups`, `group_members (group_id, user_id|guest_id, joined_at, left_at)`, `group_invites (token, group_id, created_by, requires_approval, expires_at, revoked_at)`, `group_join_requests (group_id, user_id, invite_token, status: pending|approved|declined, decided_by, decided_at)`.
 - Membership history is retained so an expense from before someone left still renders their name.
 - Expense writes check `group_members` for every payer and participant; a non-member in the payload is rejected with a clear error rather than auto-added, except in the proximity flow where the user explicitly confirms the add.
 
@@ -377,7 +385,7 @@ Moving an expense changes only its context pointer; the payers and participants 
 
 **Rules**
 
-- **Personal → group:** allowed when every payer and participant is a member of the target group. If someone is not, the mover is offered "Add Aditi to Bali 2027 and move" in one step (requires admin, or the group's open-add setting).
+- **Personal → group:** allowed when every payer and participant is a member of the target group. If someone is not, the mover is offered "Add Aditi to Bali 2027 and move" in one step (the mover adds them like any member adds a friend, so they must be the mover's friends; anyone else needs an invite link).
 - **Group → personal:** allowed always; the expense becomes a direct expense among the same people. The group feed shows a "moved out by Pranav" entry.
 - **Group → group:** same membership check as personal → group.
 - Settlements cannot be moved; they belong to the context where the debt was.
@@ -652,7 +660,7 @@ The schema centres on an append-only `expense_revisions` table; everything else 
 | `refresh_tokens` | id, user\_id, device\_id, family\_id, expires\_at, used\_at | Rotation with family revocation |
 | `guest_identities` | id, display\_name, identifier\_kind, identifier\_normalised, verified\_at, created\_by, merged\_user\_id, merged\_at, merge\_blocked\_at | Section 15. One row per guest spot; display\_name and identifier are empty until the guest fills the spot (verified\_at set). Identifier not unique across bills |
 | `groups` | id, name, type, default\_currency, simplify\_debts, archived\_at, created\_by |  |
-| `group_members` | group\_id, user\_id or guest\_id, role, joined\_at, left\_at | History retained |
+| `group_members` | group\_id, user\_id or guest\_id, joined\_at, left\_at | History retained. No roles: every member is equal |
 | `expenses` | id, context\_type (direct/group), group\_id, current\_revision\_id, kind (expense/settlement), created\_by, deleted\_at, deleted\_by | Pointer to the live revision |
 | `expense_revisions` | id, expense\_id, rev\_no, context\_type, group\_id, name, amount\_minor, currency, expense\_date, split\_mode, notes, receipt\_id, created\_by, created\_at, reason (create/edit/move) | Immutable. Context is recorded per revision so a move keeps its history (Section 10); `expenses.context_type/group_id` mirror the current revision |
 | `expense_payers` | revision\_id, user\_id or guest\_id, amount\_minor | Sum = amount |
@@ -690,11 +698,11 @@ One REST API under `/v1`, JSON everywhere, JWT bearer auth, `Idempotency-Key` re
 | Auth | `POST /auth/otp/send`, `POST /auth/otp/verify`, `POST /auth/apple`, `POST /auth/refresh`, `POST /auth/logout`, `POST /auth/identifiers`, `DELETE /auth/identifiers/{id}` | Rate-limited by identifier and IP |
 | Users | `GET/PATCH /me`, `POST /me/contacts/match`, `GET /friends` | Contact match takes hashes only |
 | Friends | `GET /me/qr`, `POST /me/qr/reset`, `POST /friends/connect` (scanned code), `POST /friends/lookup`, `POST /friends/add` (phone or email), `DELETE /friends/{id}`, `GET /u/{code}` (web page); Phase 2: `POST /friends/nearby/sessions`, `POST /friends/nearby/requests`, `POST /friends/nearby/requests/{id}/accept`, `.../decline` | Section 6A. Connect is rate-limited |
-| Groups | `POST /groups`, `GET /groups`, `GET/PATCH /groups/{id}`, `POST /groups/{id}/members`, `DELETE /groups/{id}/members/{pid}`, `POST /groups/{id}/invites`, `POST /invites/{token}/accept`, `POST /groups/{id}/archive` | Leave blocked while balance non-zero (409) |
+| Groups | `POST /groups`, `GET /groups?archived=`, `GET/PATCH /groups/{id}`, `POST /groups/{id}/members`, `DELETE /groups/{id}/members/{pid}` (any member removes someone, or leaves when it's themselves), `POST /groups/{id}/invites`, `DELETE /groups/{id}/invites/{token}`, `GET /invites/{token}` (preview), `POST /invites/{token}/accept` (200 joined, 202 waiting for approval), `GET /groups/{id}/join-requests`, `POST /groups/{id}/join-requests/{rid}/approve` and `/decline`, `POST /groups/{id}/archive` and `/unarchive` | Leave or removal blocked while balance non-zero (409). The API calls Smart Settle `smart_settle` |
 | Expenses | `POST /expenses`, `GET /expenses?friend_id=...&status=live\|deleted&cursor=...`, `GET /expenses/{id}`, `PUT /expenses/{id}` (new revision; the last save wins), `DELETE /expenses/{id}`, `POST /expenses/{id}/restore`, `POST /expenses/{id}/move`, `GET /expenses/{id}/revisions` | Body carries payers, split mode and inputs; server returns computed shares. The list is newest expense date first; `status=deleted` lists those still restorable (30 days). Group filters arrive with groups |
 | Split preview | `POST /split/preview` | Pure function, no persistence; used by clients for live editors |
 | Balances | `GET /balances`, `GET /balances/friends/{id}`, `GET /groups/{id}/balances?simplified=true` | Per currency; positive means they owe you. `GET /balances` is a summary with totals, so it isn't paginated |
-| Settlements | `POST /settlements` (record), `POST /settlements/paynow-intent`, `POST /settlements/{id}/confirm`, `POST /settlements/{id}/dispute` | Wallet variant added in Phase 2 |
+| Settlements | `POST /settlements` (record), `PUT /settlements/{id}` (edit); view, delete (dispute), restore and history use `/expenses/{id}...` | "Pay by phone number" ends in the same record call (the app confirms "Did the payment go through?" first), so no separate intent or confirm endpoints. Wallet variant added in Phase 2 |
 | Phone number requests | `POST /phone-requests`, `POST /phone-requests/{id}/share` (confirm or change the number), `POST /phone-requests/{id}/decline`, `GET /friends/{id}/phone`, `DELETE /me/phone-shares/{viewer_id}` | Section 8. Only people the owner shared with can read it |
 | Reminders | `POST /balances/{pair}/remind` | 72-hour cooldown |
 | Receipts & claims | `POST /receipts/upload-url`, `POST /receipts`, `GET /receipts/{id}`, `PATCH /receipts/{id}/items/{n}`, `POST /claims` (open session), `GET /claims/{sid}`, `PUT /claims/{sid}/items/{item}/me`, `POST /claims/{sid}/close`, `WS /claims/{sid}/ws` | Session scoped to participants and verified guests |

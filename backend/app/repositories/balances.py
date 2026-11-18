@@ -67,6 +67,17 @@ async def between(session: AsyncSession, x: uuid.UUID, y: uuid.UUID) -> list[Bal
     return list((await session.execute(stmt)).scalars())
 
 
+async def in_group_for(
+    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
+) -> list[Balance]:
+    stmt = select(Balance).where(
+        Balance.group_id == group_id,
+        or_(Balance.party_a == user_id, Balance.party_b == user_id),
+        Balance.amount_minor != 0,
+    )
+    return list((await session.execute(stmt)).scalars())
+
+
 async def all_nonzero(session: AsyncSession) -> dict[Key, int]:
     rows = await session.execute(select(Balance).where(Balance.amount_minor != 0))
     return {_key(b): b.amount_minor for b in rows.scalars()}

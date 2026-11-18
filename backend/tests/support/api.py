@@ -72,11 +72,15 @@ async def _cleanup() -> None:
         # triggers off for this one test-cleanup transaction only; the app never does this.
         await c.execute(text("SET LOCAL session_replication_role = replica"))
         for table in (
+            "group_join_requests",
+            "group_invites",
+            "group_members",
             "balances",
             "expense_shares",
             "expense_payers",
             "expenses",
             "expense_revisions",
+            "groups",
             "friendships",
             "user_qr_codes",
             "idempotency_keys",

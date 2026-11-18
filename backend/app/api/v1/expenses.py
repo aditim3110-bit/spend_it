@@ -44,7 +44,7 @@ async def create_expense(
     body: ExpenseIn, user: CurrentUser, expenses: Expenses, _key: IdempotencyKey
 ) -> ExpenseOut:
     """Add an expense. Send who paid and how to split; the server works out who owes what."""
-    return _expense_out(await expenses.create(user, body))
+    return expense_out(await expenses.create(user, body))
 
 
 @router.get("", response_model=ExpensePageOut)
@@ -59,12 +59,12 @@ async def list_expenses(
     """Expenses you're on, newest date first. `friend_id` narrows to those shared with one
     friend. `status=deleted` lists ones deleted in the last 30 days (still restorable)."""
     page = await expenses.page(user, friend_id=friend_id, status=status, limit=limit, cursor=cursor)
-    return ExpensePageOut(items=[_expense_out(v) for v in page.items], next_cursor=page.next_cursor)
+    return ExpensePageOut(items=[expense_out(v) for v in page.items], next_cursor=page.next_cursor)
 
 
 @router.get("/{expense_id}", response_model=ExpenseOut)
 async def get_expense(expense_id: uuid.UUID, user: CurrentUser, expenses: Expenses) -> ExpenseOut:
-    return _expense_out(await expenses.get(user, expense_id))
+    return expense_out(await expenses.get(user, expense_id))
 
 
 @router.put("/{expense_id}", response_model=ExpenseOut)
@@ -77,7 +77,7 @@ async def edit_expense(
 ) -> ExpenseOut:
     """Replace the expense with a new version (the last save wins). The old version is
     kept in the history."""
-    return _expense_out(await expenses.edit(user, expense_id, body))
+    return expense_out(await expenses.edit(user, expense_id, body))
 
 
 @router.delete("/{expense_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -96,7 +96,7 @@ async def restore_expense(
     expenses: Expenses,
     _key: IdempotencyKey,
 ) -> ExpenseOut:
-    return _expense_out(await expenses.restore(user, expense_id))
+    return expense_out(await expenses.restore(user, expense_id))
 
 
 @router.get("/{expense_id}/revisions", response_model=RevisionListOut)
@@ -150,7 +150,7 @@ def _revision_out(rows: RevisionRows, names: dict[uuid.UUID, str | None]) -> Rev
     )
 
 
-def _expense_out(view: ExpenseView) -> ExpenseOut:
+def expense_out(view: ExpenseView) -> ExpenseOut:
     e, r = view.expense, view.current.revision
     return ExpenseOut(
         id=e.id,

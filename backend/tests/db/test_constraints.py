@@ -356,20 +356,16 @@ async def test_group_membership_rules(conn: AsyncConnection) -> None:
         simplify_debts=True,
         created_by=a,
     )
-    member = await insert(conn, "group_members", group_id=group, user_id=a, role="admin")
+    member = await insert(conn, "group_members", group_id=group, user_id=a)
 
     # Can't be a current member twice...
     async with rejected(conn, match="uq_group_members_active_user"):
-        await insert(conn, "group_members", group_id=group, user_id=a, role="member")
+        await insert(conn, "group_members", group_id=group, user_id=a)
     # ...but can rejoin after leaving (history is kept as a separate row).
     await conn.execute(
         text("UPDATE group_members SET left_at = now() WHERE id = :m"), {"m": member}
     )
-    await insert(conn, "group_members", group_id=group, user_id=a, role="member")
-
-    guest = await insert(conn, "guest_identities", display_name="Chen", created_by=a)
-    async with rejected(conn, match="guests_are_not_admins"):
-        await insert(conn, "group_members", group_id=group, guest_id=guest, role="admin")
+    await insert(conn, "group_members", group_id=group, user_id=a)
     async with rejected(conn, match="group_type"):
         await insert(
             conn,
