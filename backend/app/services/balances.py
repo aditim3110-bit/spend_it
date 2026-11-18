@@ -22,9 +22,12 @@ from app.models import Expense, User
 from app.models.expense import ContextType
 from app.repositories import balances as repo
 from app.repositories import expenses as expense_repo
+from app.repositories import friends as friend_repo
+from app.repositories import groups as group_repo
 from app.repositories import users as user_repo
 from app.repositories.balances import Key
 from app.repositories.expenses import RevisionData, RevisionRows
+from app.services.simplify import simplify
 from app.services.split_engine import pairwise_debts
 
 Deltas = dict[Key, int]
@@ -122,15 +125,80 @@ async def owed_between(
     )
 
 
-async def member_balance(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
-) -> dict[str, int]:
-    """This member's overall position in one group, per currency (positive: they're owed).
-    Non-zero means they can't leave or be removed yet (PRD section 9)."""
-    totals: dict[str, int] = defaultdict(int)
-    for b in await repo.in_group_for(session, group_id, user_id):
-        totals[b.currency] += _from_my_side(user_id, b.party_a, b.amount_minor)
-    return {cur: amt for cur, amt in sorted(totals.items()) if amt}
+# --- Groups: plain debts and Smart Settle -------------------------------------------------
+
+
+Transfer = tuple[uuid.UUID, uuid.UUID, str, int]  # payer, receiver, currency, amount
+
+
+@dataclass
+class GroupView:
+    nets: dict[uuid.UUID, dict[str, int]]  # member -> currency -> overall position
+    transfers: list[Transfer]  # who pays whom to settle the group
+
+
+async def group_view(session: AsyncSession, group_id: uuid.UUID, smart: bool) -> GroupView:
+    """The group's balances. With `smart` (Smart Settle), the fewest payments that settle
+    everyone, only ever between friends; otherwise the plain debts (PRD section 8)."""
+    plain: dict[str, dict[tuple[str, str], int]] = defaultdict(dict)
+    nets: dict[uuid.UUID, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for b in await repo.in_group(session, group_id):
+        # Stored as "b owes a" when positive.
+        debtor, creditor = (b.party_b, b.party_a) if b.amount_minor > 0 else (b.party_a, b.party_b)
+        amount = abs(b.amount_minor)
+        plain[b.currency][(str(debtor), str(creditor))] = amount
+        nets[debtor][b.currency] -= amount
+        nets[creditor][b.currency] += amount
+
+    friends: set[frozenset[uuid.UUID]] = set()
+    if smart:
+        friends = await friend_repo.pairs_among(session, set(nets))
+
+    def are_friends(a: str, b: str) -> bool:
+        return frozenset((uuid.UUID(a), uuid.UUID(b))) in friends
+
+    transfers: list[Transfer] = []
+    for currency in sorted(plain):
+        if smart:
+            by_person = {str(p): n[currency] for p, n in nets.items() if n.get(currency)}
+            payments = simplify(by_person, plain[currency], are_friends)
+        else:
+            payments = plain[currency]
+        transfers += [
+            (uuid.UUID(a), uuid.UUID(b), currency, amount)
+            for (a, b), amount in sorted(payments.items())
+        ]
+    clean = {p: {c: a for c, a in sorted(n.items()) if a} for p, n in nets.items()}
+    return GroupView(nets={p: n for p, n in clean.items() if n}, transfers=transfers)
+
+
+Lines = dict[tuple[str, uuid.UUID | None], dict[uuid.UUID, dict[str, int]]]
+
+
+async def my_lines(session: AsyncSession, user_id: uuid.UUID) -> Lines:
+    """What each person owes this user (positive) or is owed (negative), per context and
+    currency. Direct balances are the plain debts; each group contributes what *that
+    group* says: its Smart Settle payments when it's on, the plain debts when it's off
+    (PRD section 8, "one payment per person, across everything")."""
+    lines: Lines = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    groups: set[uuid.UUID] = set()
+    for b in await repo.for_user(session, user_id):
+        if b.group_id is not None:
+            groups.add(b.group_id)
+            continue
+        other = b.party_b if b.party_a == user_id else b.party_a
+        lines[("direct", None)][other][b.currency] += _from_my_side(
+            user_id, b.party_a, b.amount_minor
+        )
+    for group_id in sorted(groups, key=str):
+        group = await group_repo.get(session, group_id)
+        view = await group_view(session, group_id, smart=bool(group and group.simplify_debts))
+        for payer, receiver, currency, amount in view.transfers:
+            if receiver == user_id:
+                lines[("group", group_id)][payer][currency] += amount
+            elif payer == user_id:
+                lines[("group", group_id)][receiver][currency] -= amount
+    return lines
 
 
 # --- Reading balances ---------------------------------------------------------------------
@@ -157,6 +225,14 @@ class ContextBalance:
 
 
 @dataclass
+class GroupScreen:
+    smart_settle: bool
+    view: str
+    balances: GroupView
+    people: list[tuple[uuid.UUID, str | None]]  # (user id, name)
+
+
+@dataclass
 class WithPerson:
     person: PersonBalance
     contexts: list[ContextBalance]
@@ -173,9 +249,10 @@ class BalanceService:
 
     async def summary(self, user: User) -> Summary:
         per_person: dict[uuid.UUID, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-        for b in await repo.for_user(self._session, user.id):
-            other = b.party_b if b.party_a == user.id else b.party_a
-            per_person[other][b.currency] += _from_my_side(user.id, b.party_a, b.amount_minor)
+        for people in (await my_lines(self._session, user.id)).values():
+            for other, amounts in people.items():
+                for currency, amount in amounts.items():
+                    per_person[other][currency] += amount
 
         users = await user_repo.get_users(self._session, set(per_person))
         people: list[PersonBalance] = []
@@ -193,19 +270,41 @@ class BalanceService:
             people=people,
         )
 
+    async def for_group(self, user: User, group_id: uuid.UUID, view: str | None) -> GroupScreen:
+        """A group's balance screen, for members. `view`: "simplified" or "detailed";
+        by default simplified when Smart Settle is on."""
+        group = await group_repo.get(self._session, group_id)
+        if group is None or not await group_repo.membership(self._session, group_id, user.id):
+            raise ProblemError(404, "not-found", "Group not found.")
+        chosen = view or ("simplified" if group.simplify_debts else "detailed")
+        balances = await group_view(self._session, group_id, chosen == "simplified")
+        # Current members first (in join order), then anyone else with money still open.
+        members = [m.user_id for m, _ in await group_repo.members(self._session, group_id)]
+        ids = list(dict.fromkeys([*members, *sorted(balances.nets, key=str)]))
+        users = await user_repo.get_users(self._session, set(ids))
+        return GroupScreen(
+            smart_settle=group.simplify_debts,
+            view=chosen,
+            balances=balances,
+            people=[(uid, users[uid].display_name if uid in users else None) for uid in ids],
+        )
+
     async def with_person(self, user: User, other_id: uuid.UUID) -> WithPerson:
         other = await user_repo.get_user(self._session, other_id)
         if other is None or other_id == user.id:
             raise ProblemError(404, "not-found", "Person not found.")
         contexts: dict[tuple[str, uuid.UUID | None], ContextBalance] = {}
         overall: dict[str, int] = defaultdict(int)
-        for b in await repo.between(self._session, user.id, other_id):
-            amount = _from_my_side(user.id, b.party_a, b.amount_minor)
-            ctx = contexts.setdefault(
-                (b.context_type, b.group_id), ContextBalance(b.context_type, b.group_id)
-            )
-            ctx.amounts[b.currency] = amount
-            overall[b.currency] += amount
+        lines = await my_lines(self._session, user.id)
+        for (context_type, group_id), people in sorted(lines.items(), key=lambda kv: str(kv[0])):
+            for currency, amount in people.get(other_id, {}).items():
+                if not amount:
+                    continue
+                ctx = contexts.setdefault(
+                    (context_type, group_id), ContextBalance(context_type, group_id)
+                )
+                ctx.amounts[currency] = amount
+                overall[currency] += amount
         return WithPerson(
             person=PersonBalance(
                 other.id,

@@ -6,7 +6,10 @@ Rules enforced here:
   unarchive, turn off any invite link, and approve or decline join requests.
 - Only current members can see a group (others get 404, as if it didn't exist).
 - Joining (added, by link, or approved) makes you friends with every current member.
-- Nobody leaves or is removed while they owe or are owed money in the group.
+- Nobody leaves or is removed while the group's settle-up list (what the group screen
+  shows: Smart Settle payments when on, plain debts when off) has a payment involving
+  them. Turning Smart Settle off is refused if it would bring back a debt involving
+  someone who has left.
 - Archived groups are read-only until a member unarchives them.
 - Membership changes lock the group row, so they happen one at a time.
 """
@@ -25,7 +28,7 @@ from app.repositories import friends as friend_repo
 from app.repositories import groups as repo
 from app.repositories import users as user_repo
 from app.schemas.groups import GroupCreateIn, GroupPatchIn
-from app.services.balances import member_balance
+from app.services.balances import group_view
 
 INVITE_LIFETIME = timedelta(days=14)
 
@@ -120,6 +123,18 @@ class GroupService:
             group.type = body.type
         if body.default_currency is not None:
             group.default_currency = body.default_currency
+        if body.smart_settle is False and group.simplify_debts:
+            # Turning it off brings back the plain debts. Refuse if that would put someone
+            # who has left back on the group's settle-up list.
+            members = await repo.member_ids(self._session, group_id)
+            plain = await group_view(self._session, group_id, smart=False)
+            if any(p not in members for t in plain.transfers for p in t[:2]):
+                raise ProblemError(
+                    409,
+                    "former-member-debts",
+                    "Smart Settle can't be turned off: someone who has left would owe or be "
+                    "owed money again. Settle those debts first.",
+                )
         if body.smart_settle is not None:
             group.simplify_debts = body.smart_settle
         await self._session.commit()
@@ -170,7 +185,7 @@ class GroupService:
         )
         if target is None:
             raise ProblemError(404, "not-found", "That person isn't in this group.")
-        owed = await member_balance(self._session, group_id, target_id)
+        owed = await self._open_payments(group, target_id)
         if owed:
             who = "You" if target_id == user.id else "They"
             raise ProblemError(
@@ -258,6 +273,18 @@ class GroupService:
         await self._session.commit()
 
     # --- Helpers --------------------------------------------------------------------------
+
+    async def _open_payments(self, group: Group, user_id: uuid.UUID) -> dict[str, int]:
+        """What this person still has to pay or collect on the group's settle-up list
+        (Smart Settle payments when it's on, the plain debts when it's off), per currency.
+        Positive: they're owed. Empty means they can leave."""
+        view = await group_view(self._session, group.id, smart=group.simplify_debts)
+        owed: dict[str, int] = {}
+        for payer, receiver, currency, amount in view.transfers:
+            if user_id in (payer, receiver):
+                sign = 1 if receiver == user_id else -1
+                owed[currency] = owed.get(currency, 0) + sign * amount
+        return dict(sorted(owed.items()))
 
     async def _member(self, user: User, group_id: uuid.UUID) -> GroupMember:
         me = await repo.membership(self._session, group_id, user.id)

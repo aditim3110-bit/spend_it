@@ -61,6 +61,9 @@ class ExpenseIn(Strict):
     notes: Notes | None = None
     payers: list[PayerIn] = Field(max_length=MAX_PAYERS + 1)
     split: SplitIn
+    # Set for a group expense (PRD section 9); leave out for a direct one between friends.
+    # An existing expense keeps its group: moving it is a separate action.
+    group_id: uuid.UUID | None = None
 
 
 # --- Out ----------------------------------------------------------------------------------
@@ -105,6 +108,7 @@ class ExpenseOut(Strict):
     id: uuid.UUID
     kind: ExpenseKind
     context_type: ContextType
+    group_id: uuid.UUID | None
     rev_no: int
     name: str
     amount_minor: int

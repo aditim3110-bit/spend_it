@@ -1,7 +1,7 @@
 """/v1/groups: groups, members, invite links and join requests (PRD section 9)."""
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,8 +14,11 @@ from app.db.session import get_session
 from app.models import GroupInvite
 from app.schemas.groups import (
     AddMembersIn,
+    GroupAmountOut,
+    GroupBalancesOut,
     GroupCreateIn,
     GroupListItem,
+    GroupMemberBalanceOut,
     GroupOut,
     GroupPageOut,
     GroupPatchIn,
@@ -24,7 +27,9 @@ from app.schemas.groups import (
     JoinRequestListOut,
     JoinRequestOut,
     MemberOut,
+    TransferOut,
 )
+from app.services.balances import BalanceService
 from app.services.groups import GroupDetail, GroupService
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -235,3 +240,38 @@ async def decline_join_request(
 ) -> Response:
     await groups.decide(user, group_id, request_id, approve=False)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- Balances -----------------------------------------------------------------------------
+
+
+@router.get("/{group_id}/balances", response_model=GroupBalancesOut)
+async def group_balances(
+    group_id: uuid.UUID,
+    user: CurrentUser,
+    session: Annotated[AsyncSession, Depends(get_session)],
+    view: Literal["simplified", "detailed"] | None = None,
+) -> GroupBalancesOut:
+    """Who owes whom in the group. `simplified` (the default when Smart Settle is on) lists
+    the fewest payments that settle everyone, only between friends; `detailed` lists the
+    plain debts."""
+    screen = await BalanceService(session).for_group(user, group_id, view)
+    return GroupBalancesOut(
+        smart_settle=screen.smart_settle,
+        view=screen.view,  # type: ignore[arg-type]
+        members=[
+            GroupMemberBalanceOut(
+                user_id=uid,
+                display_name=name,
+                amounts=[
+                    GroupAmountOut(currency=c, amount_minor=a)
+                    for c, a in screen.balances.nets.get(uid, {}).items()
+                ],
+            )
+            for uid, name in screen.people
+        ],
+        transfers=[
+            TransferOut(from_user_id=a, to_user_id=b, currency=c, amount_minor=amt)
+            for a, b, c, amt in screen.balances.transfers
+        ],
+    )

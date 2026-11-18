@@ -52,13 +52,17 @@ async def list_expenses(
     user: CurrentUser,
     expenses: Expenses,
     friend_id: uuid.UUID | None = None,
+    group_id: uuid.UUID | None = None,
     status: ExpenseStatus = "live",
     limit: Annotated[int, Query(ge=1, le=pagination.MAX_LIMIT)] = pagination.DEFAULT_LIMIT,
     cursor: str | None = None,
 ) -> ExpensePageOut:
-    """Expenses you're on, newest date first. `friend_id` narrows to those shared with one
-    friend. `status=deleted` lists ones deleted in the last 30 days (still restorable)."""
-    page = await expenses.page(user, friend_id=friend_id, status=status, limit=limit, cursor=cursor)
+    """Expenses you're on, newest date first. `group_id` lists every expense in one of your
+    groups instead (the group feed). `friend_id` narrows to those involving one person.
+    `status=deleted` lists ones deleted in the last 30 days (still restorable)."""
+    page = await expenses.page(
+        user, friend_id=friend_id, status=status, limit=limit, cursor=cursor, group_id=group_id
+    )
     return ExpensePageOut(items=[expense_out(v) for v in page.items], next_cursor=page.next_cursor)
 
 
@@ -156,6 +160,7 @@ def expense_out(view: ExpenseView) -> ExpenseOut:
         id=e.id,
         kind=e.kind,
         context_type=e.context_type,
+        group_id=e.group_id,
         rev_no=r.rev_no,
         name=r.name,
         amount_minor=r.amount_minor,

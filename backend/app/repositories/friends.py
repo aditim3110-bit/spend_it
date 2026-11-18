@@ -87,6 +87,16 @@ async def friends_among(
     return {b if a == user_id else a for a, b in (await session.execute(stmt)).all()}
 
 
+async def pairs_among(session: AsyncSession, people: set[uuid.UUID]) -> set[frozenset[uuid.UUID]]:
+    """Every friendship between two people in `people`."""
+    if len(people) < 2:
+        return set()
+    stmt = select(Friendship.user_a, Friendship.user_b).where(
+        Friendship.user_a.in_(people), Friendship.user_b.in_(people)
+    )
+    return {frozenset((a, b)) for a, b in (await session.execute(stmt)).all()}
+
+
 async def remove(session: AsyncSession, x: uuid.UUID, y: uuid.UUID) -> None:
     a, b = ordered(x, y)
     await session.execute(delete(Friendship).where(Friendship.user_a == a, Friendship.user_b == b))

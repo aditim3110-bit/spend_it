@@ -11,6 +11,8 @@ rules that must hold however the expenses were made:
   server decides, and it's reproducible: balances can be rebuilt from revisions);
 - revision numbers run 1, 2, 3... and the expense points at the newest one;
 - the current state matches a simple in-memory model of what should have happened;
+- each group's Smart Settle payments (and its plain debts) keep every member's overall
+  position (expenses and payments are randomly direct or in a group everyone is in);
 - the balances table equals a rebuild from scratch, and each person's balances add up to
   the sum of what they paid minus what they owe across live expenses (PRD section 8).
 
@@ -31,12 +33,15 @@ from sqlalchemy.pool import NullPool
 
 from app.core.errors import ProblemError
 from app.models import FriendSource, User
+from app.models.group import GroupType
 from app.repositories import balances as balance_repo
 from app.repositories import friends as friend_repo
 from app.schemas.expenses import ExpenseIn
+from app.schemas.groups import GroupCreateIn
 from app.schemas.settlements import SettlementIn
-from app.services.balances import expected_from_ledger, owed_between
+from app.services.balances import expected_from_ledger, group_view, owed_between
 from app.services.expenses import ExpenseService
+from app.services.groups import GroupService
 from app.services.settlements import SettlementService
 from app.services.split_engine import Payer, ShareInput, SplitMode, SplitRequest, compute_split
 from tests.support.database import TEST_DATABASE_URL
@@ -82,6 +87,7 @@ def expense_specs(draw: st.DrawFn, actor: int) -> dict[str, Any]:
         "mode": mode,
         "values": values,
         "payers": list(zip(payer_ids, paid, strict=True)),
+        "group": draw(st.booleans()),  # in the group everyone is in, or direct
     }
 
 
@@ -104,6 +110,7 @@ def operations(draw: st.DrawFn) -> list[tuple]:
             spec = {
                 "pick": draw(st.integers(0, 20)),
                 "pct": draw(st.sampled_from([100, 50, 1, 150])),
+                "group": draw(st.booleans()),  # recorded inside the group, or direct
             }
         else:
             spec = None
@@ -123,11 +130,13 @@ class Expected:
     ever: set[int]  # in any version (they can still view it)
     deleted: bool
     settlement: bool = False
+    group: bool = False  # in the group (any member may change it) rather than direct
 
 
-def _body(spec: dict[str, Any], users: list[User]) -> ExpenseIn:
+def _body(spec: dict[str, Any], users: list[User], group_id: uuid.UUID) -> ExpenseIn:
     return ExpenseIn.model_validate(
         {
+            "group_id": group_id if spec["group"] else None,
             "name": "Thing",
             "amount_minor": spec["amount"],
             "currency": spec["currency"],
@@ -144,8 +153,11 @@ def _body(spec: dict[str, Any], users: list[User]) -> ExpenseIn:
     )
 
 
-def _payment_in(payer: User, receiver: User, amount: int, currency: str) -> SettlementIn:
+def _payment_in(
+    payer: User, receiver: User, amount: int, currency: str, group_id: uuid.UUID | None
+) -> SettlementIn:
     return SettlementIn(
+        group_id=group_id,
         payer_id=payer.id,
         receiver_id=receiver.id,
         amount_minor=amount,
@@ -183,6 +195,18 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
     await friend_repo.connect_many(session, pairs, FriendSource.QR)
     await session.commit()
 
+    # Everyone is in one group too, so expenses and payments can be direct or in the group.
+    group = await GroupService(session).create(
+        users[0],
+        GroupCreateIn(
+            name="G",
+            type=GroupType.TRIP,
+            default_currency="SGD",
+            member_ids=[u.id for u in users[1:]],
+        ),
+    )
+    group_id = group.group.id
+
     service = ExpenseService(session)
     payments = SettlementService(session)
     model: list[Expected] = []
@@ -190,9 +214,13 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
     for kind, actor, target, spec in ops:
         user = users[actor]
         if kind == "create":
-            view = await service.create(user, _body(spec, users))
+            view = await service.create(user, _body(spec, users, group_id))
             people = _people(spec)
-            model.append(Expected(view.expense.id, 1, spec["amount"], people, people, False))
+            model.append(
+                Expected(
+                    view.expense.id, 1, spec["amount"], people, people, False, group=spec["group"]
+                )
+            )
             continue
         if kind == "settle":
             # Pick one of the debts that exist right now; the person who owes records it.
@@ -213,9 +241,17 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
             payer, receiver = users[debtor], users[other]
             amount = max(1, owed * spec["pct"] // 100)
             event(f"payment recorded ({spec['pct']}% of the debt)")
-            view = await payments.record(payer, _payment_in(payer, receiver, amount, currency))
+            in_group = group_id if spec["group"] else None
+            view = await payments.record(
+                payer, _payment_in(payer, receiver, amount, currency, in_group)
+            )
             pair = {debtor, other}
-            model.append(Expected(view.expense.id, 1, amount, pair, pair, False, settlement=True))
+            model.append(
+                Expected(
+                    view.expense.id, 1, amount, pair, pair, False,
+                    settlement=True, group=spec["group"],
+                )
+            )  # fmt: skip
             # What's owed afterwards is exactly the old debt minus the payment.
             after = await owed_between(session, payer.id, receiver.id, currency)
             assert after == owed - amount
@@ -223,10 +259,13 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
         if not model:
             continue
         exp = model[target % len(model)]
-        allowed = actor in exp.people
+        # In the group any member may change it (everyone is a member here); direct
+        # expenses only by someone on the current version.
+        allowed = exp.group or actor in exp.people
         try:
             if kind == "edit":
-                await service.edit(user, exp.id, _body(spec, users))
+                spec = {**spec, "group": exp.group}  # an edit can't change the group
+                await service.edit(user, exp.id, _body(spec, users, group_id))
                 assert allowed and not exp.deleted and not exp.settlement
                 exp.rev_no += 1
                 exp.amount = spec["amount"]
@@ -245,7 +284,7 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
             # no longer on it (403), or editing a deleted one or a payment through the
             # expense route (409). All are raised before anything is written, so the
             # session carries on.
-            if actor not in exp.ever:
+            if not exp.group and actor not in exp.ever:
                 expected_status = 404
             elif not allowed:
                 expected_status = 403
@@ -254,6 +293,21 @@ async def _scenario(session: AsyncSession, ops: list[tuple]) -> None:
             assert err.status == expected_status, (kind, err.status, err.detail)
 
     await _check_invariants(session, model, users)
+    await _check_group(session, group_id)
+
+
+async def _check_group(session: AsyncSession, group_id: uuid.UUID) -> None:
+    """Smart Settle's payments keep every member's overall position in the group, and so
+    do the plain debts."""
+    for smart in (True, False):
+        view = await group_view(session, group_id, smart)
+        moved: dict[tuple[uuid.UUID, str], int] = {}
+        for payer, receiver, currency, amount in view.transfers:
+            assert amount > 0
+            moved[(payer, currency)] = moved.get((payer, currency), 0) - amount
+            moved[(receiver, currency)] = moved.get((receiver, currency), 0) + amount
+        expected = {(p, c): a for p, n in view.nets.items() for c, a in n.items()}
+        assert {k: v for k, v in moved.items() if v} == expected
 
 
 async def _check_invariants(

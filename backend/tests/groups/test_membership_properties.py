@@ -33,6 +33,7 @@ from app.repositories import friends as friend_repo
 from app.repositories.balances import Key
 from app.schemas.groups import GroupCreateIn
 from app.services.groups import GroupService
+from app.services.simplify import simplify
 from tests.support.database import TEST_DATABASE_URL
 
 PEOPLE = 5
@@ -63,10 +64,19 @@ class Model:
     def __init__(self, friends: set[frozenset[int]]) -> None:
         self.members: list[int] = [0]  # in join order; everyone is equal
         self.friends = set(friends)
-        self.owed: dict[frozenset[int], int] = {}
+        # (a, b) with a's user ID < b's, as stored: a positive amount means b owes a.
+        self.owed: dict[tuple[int, int], int] = {}
 
     def has_money_open(self, who: int) -> bool:
-        return any(amount and who in pair for pair, amount in self.owed.items())
+        """Is `who` on the group's settle-up list? Smart Settle is on in this test, so
+        that's the Smart Settle payments (which depend on who is friends)."""
+        plain = {(str(b), str(a)): amt for (a, b), amt in self.owed.items() if amt}
+        nets: dict[str, int] = {}
+        for (debtor, creditor), amt in plain.items():
+            nets[debtor] = nets.get(debtor, 0) - amt
+            nets[creditor] = nets.get(creditor, 0) + amt
+        payments = simplify(nets, plain, lambda x, y: frozenset((int(x), int(y))) in self.friends)
+        return any(str(who) in pair for pair in payments)
 
     def join(self, who: int) -> None:
         for other in self.members:
@@ -160,14 +170,13 @@ async def _scenario(
                 if other == actor or actor not in model.members or other not in model.members:
                     continue
                 expected_ok = True
-                pair = frozenset((actor, other))
-                a, b = sorted((users[actor].id, users[other].id))
-                key = Key(ContextType.GROUP, group_id, a, b, "SGD")
-                await balance_repo.apply(session, {key: amount - model.owed.get(pair, 0)})
+                ia, ib = sorted((actor, other), key=lambda i: users[i].id)
+                key = Key(ContextType.GROUP, group_id, users[ia].id, users[ib].id, "SGD")
+                await balance_repo.apply(session, {key: amount - model.owed.get((ia, ib), 0)})
                 await session.commit()
-                model.owed[pair] = amount
-                if amount:
-                    # Money is now open between them: leaving must be refused right away.
+                model.owed[(ia, ib)] = amount
+                if amount and model.has_money_open(actor):
+                    # They're on the settle-up list: leaving must be refused right away.
                     try:
                         await service.remove(users[actor], group_id, users[actor].id)
                     except ProblemError as err:

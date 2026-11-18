@@ -84,6 +84,16 @@ async def membership(
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+async def member_ids(session: AsyncSession, group_id: uuid.UUID) -> set[uuid.UUID]:
+    """User IDs of everyone currently in the group."""
+    stmt = select(GroupMember.user_id).where(
+        GroupMember.group_id == group_id,
+        GroupMember.left_at.is_(None),
+        GroupMember.user_id.is_not(None),
+    )
+    return set((await session.execute(stmt)).scalars())  # type: ignore[arg-type]
+
+
 async def members(session: AsyncSession, group_id: uuid.UUID) -> list[tuple[GroupMember, User]]:
     """Current members, longest-standing first."""
     stmt = (

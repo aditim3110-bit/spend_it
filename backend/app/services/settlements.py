@@ -14,6 +14,8 @@ Rules:
   same way (they then owe you).
 - How it was paid (cash, bank, PayNow...) isn't recorded.
 - Friendship isn't required: paying back someone you've unfriended still works.
+- Inside a group, both people must be current members, and the group rules for changing
+  it apply (any member; locked once one of them has left).
 """
 
 import uuid
@@ -55,7 +57,12 @@ class SettlementService(ExpenseService):
             )
         await self._check_users({payer, receiver})
         data = _payment(payer, receiver, body.amount_minor, body.currency, body)
-        expense = await repo.create(self._session, user.id, data, kind=ExpenseKind.SETTLEMENT)
+        if body.group_id is not None:
+            group = await self._writable_group(user, body.group_id)
+            await self._check_members(group, {payer, receiver})
+        expense = await repo.create(
+            self._session, user.id, data, kind=ExpenseKind.SETTLEMENT, group_id=body.group_id
+        )
         await balance_repo.apply(self._session, data_deltas(expense, data, +1))
         await self._session.commit()
         return await self._view(expense.id)

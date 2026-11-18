@@ -59,13 +59,15 @@ async def create(
     user_id: uuid.UUID,
     data: RevisionData,
     kind: ExpenseKind = ExpenseKind.EXPENSE,
+    group_id: uuid.UUID | None = None,
 ) -> Expense:
-    """A new direct expense (or settlement) with revision 1. The caller commits."""
+    """A new expense (or settlement) with revision 1: direct, or in `group_id`. The caller
+    commits."""
     expense = Expense(
         id=uuid.uuid4(),
         kind=kind,
-        context_type=ContextType.DIRECT,
-        group_id=None,
+        context_type=ContextType.GROUP if group_id else ContextType.DIRECT,
+        group_id=group_id,
         expense_date=data.expense_date,
         created_by=user_id,
     )
@@ -233,14 +235,20 @@ async def feed(
     deleted_since: datetime | None,
     limit: int,
     after: tuple[date, datetime, uuid.UUID] | None,
+    group_id: uuid.UUID | None = None,
 ) -> list[Expense]:
-    """Expenses the user is in, newest expense date first.
+    """Expenses the user is in, newest expense date first. With `group_id`: every expense
+    in that group instead (the caller checks the user is a member).
 
     `deleted_since=None` lists live expenses; otherwise expenses deleted since then (the
     ones that can still be restored). `after` is the sort key of the previous page's last
     item.
     """
-    stmt = select(Expense).where(_in_current(user_id)).execution_options(populate_existing=True)
+    stmt = select(Expense).execution_options(populate_existing=True)
+    if group_id is None:
+        stmt = stmt.where(_in_current(user_id))
+    else:
+        stmt = stmt.where(Expense.group_id == group_id)
     if friend_id is not None:
         stmt = stmt.where(_in_current(friend_id))
     if deleted_since is None:

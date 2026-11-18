@@ -23,6 +23,9 @@ class SettlementIn(Strict):
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     expense_date: date
     notes: Notes | None = None
+    # Inside a group (both people must be members): how the group screen's "Ben pays
+    # Chen" is recorded. Leave out for a payment outside groups.
+    group_id: uuid.UUID | None = None
 
 
 class SettlementEditIn(Strict):

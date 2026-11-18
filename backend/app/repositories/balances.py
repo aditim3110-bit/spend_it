@@ -67,14 +67,9 @@ async def between(session: AsyncSession, x: uuid.UUID, y: uuid.UUID) -> list[Bal
     return list((await session.execute(stmt)).scalars())
 
 
-async def in_group_for(
-    session: AsyncSession, group_id: uuid.UUID, user_id: uuid.UUID
-) -> list[Balance]:
-    stmt = select(Balance).where(
-        Balance.group_id == group_id,
-        or_(Balance.party_a == user_id, Balance.party_b == user_id),
-        Balance.amount_minor != 0,
-    )
+async def in_group(session: AsyncSession, group_id: uuid.UUID) -> list[Balance]:
+    """Every non-zero balance between members of one group."""
+    stmt = select(Balance).where(Balance.group_id == group_id, Balance.amount_minor != 0)
     return list((await session.execute(stmt)).scalars())
 
 

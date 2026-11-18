@@ -133,3 +133,33 @@ class JoinRequestOut(Strict):
 
 class JoinRequestListOut(Strict):
     items: list[JoinRequestOut]
+
+
+# --- Group balances -------------------------------------------------------------------------
+
+
+class GroupAmountOut(Strict):
+    currency: str
+    amount_minor: int  # positive: they're owed overall; negative: they owe overall
+
+
+class GroupMemberBalanceOut(Strict):
+    user_id: uuid.UUID
+    display_name: str | None
+    amounts: list[GroupAmountOut]  # empty when they're square
+
+
+class TransferOut(Strict):
+    from_user_id: uuid.UUID
+    to_user_id: uuid.UUID
+    currency: str
+    amount_minor: int
+
+
+class GroupBalancesOut(Strict):
+    """The group's balance screen (PRD sections 8 and 9)."""
+
+    smart_settle: bool
+    view: Literal["simplified", "detailed"]
+    members: list[GroupMemberBalanceOut]  # current members, plus anyone else with money open
+    transfers: list[TransferOut]  # simplified: Smart Settle payments; detailed: plain debts

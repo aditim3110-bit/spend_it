@@ -1,7 +1,7 @@
-"""Direct expenses between friends: create, view, list, edit, delete, restore, history
-(PRD sections 7 and 17; decisions of 2026-11-17).
+"""Expenses: create, view, list, edit, delete, restore, history (PRD sections 7, 9, 17;
+decisions of 2026-11-17 and 2026-11-18).
 
-Rules enforced here:
+Direct expenses (no group):
 - The person adding or editing must be on the expense (paid, or owes).
 - Everyone else on a new expense must be their friend. In an edit, only newly added
   people are checked: someone already on the expense stays even if a friendship ended,
@@ -13,6 +13,16 @@ Rules enforced here:
   ever on it can still view it and its history.
 - The last save wins: an edit always applies on top of the latest version, even if the
   person opened an older one. Nothing is lost, because every version stays in the history.
+
+Group expenses:
+- Any current member can add, edit, delete or restore one, even if they're not on it.
+- Everyone on it must be a current member; nobody is added to the group automatically.
+- If anyone on it has left the group, it's locked (no edit, delete or restore), so
+  nobody gets a debt in a group they're no longer in.
+- Archived groups are read-only.
+- Current members can see every group expense; anyone ever on one can still see it.
+- No friendship checks or auto-friending: joining the group already made them friends.
+- An expense never changes group through an edit (moving is a separate action).
 """
 
 import uuid
@@ -24,11 +34,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import pagination
 from app.core.errors import ProblemError
 from app.core.split_errors import split_problem
-from app.models import Expense, FriendSource, User
+from app.models import Expense, FriendSource, Group, User
 from app.models.expense import ExpenseKind, RevisionReason, SplitModeDb
 from app.repositories import balances as balance_repo
 from app.repositories import expenses as repo
 from app.repositories import friends as friend_repo
+from app.repositories import groups as group_repo
 from app.repositories import users as user_repo
 from app.repositories.expenses import RevisionData, RevisionRows
 from app.schemas.expenses import ExpenseIn, ExpenseStatus
@@ -73,10 +84,15 @@ class ExpenseService:
         _require_name(user)
         data = _compute(body)
         people = data.people()
-        await self._check_people(user, people, already_on=set())
-        expense = await repo.create(self._session, user.id, data)
+        if body.group_id is None:
+            await self._check_people(user, people, already_on=set())
+            expense = await repo.create(self._session, user.id, data)
+            await self._befriend(people, newly_added=people)
+        else:
+            group = await self._writable_group(user, body.group_id)
+            await self._check_members(group, people)
+            expense = await repo.create(self._session, user.id, data, group_id=group.id)
         await balance_repo.apply(self._session, data_deltas(expense, data, +1))
-        await self._befriend(people, newly_added=people)
         await self._session.commit()
         return await self._view(expense.id)
 
@@ -91,10 +107,18 @@ class ExpenseService:
             raise ProblemError(
                 409, "expense-deleted", "This expense was deleted. Restore it to edit it."
             )
+        if body.group_id != expense.group_id:
+            raise ProblemError(
+                409, "use-move", "An expense can't change group in an edit. Move it instead."
+            )
         data = _compute(body)
         people = data.people()
         before = current.people()
-        await self._check_people(user, people, already_on=before)
+        if expense.group_id is None:
+            await self._check_people(user, people, already_on=before)
+        else:
+            group = await group_repo.get(self._session, expense.group_id)
+            await self._check_members(group, people)  # type: ignore[arg-type]
         await repo.add_revision(
             self._session, expense, user.id, current.revision.rev_no + 1, RevisionReason.EDIT, data
         )
@@ -102,7 +126,8 @@ class ExpenseService:
         await balance_repo.apply(
             self._session, merge(rows_deltas(current, -1), data_deltas(expense, data, +1))
         )
-        await self._befriend(people, newly_added=people - before)
+        if expense.group_id is None:
+            await self._befriend(people, newly_added=people - before)
         await self._session.commit()
         return await self._view(expense.id)
 
@@ -144,7 +169,12 @@ class ExpenseService:
         status: ExpenseStatus,
         limit: int,
         cursor: str | None,
+        group_id: uuid.UUID | None = None,
     ) -> ExpensePage:
+        if group_id is not None and not await group_repo.membership(
+            self._session, group_id, user.id
+        ):
+            raise ProblemError(404, "not-found", "Group not found.")
         after = pagination.decode_dated(cursor) if cursor else None
         since = None if status == "live" else datetime.now(UTC) - RESTORE_WINDOW
         rows = await repo.feed(
@@ -154,6 +184,7 @@ class ExpenseService:
             deleted_since=since,
             limit=limit + 1,
             after=after,
+            group_id=group_id,
         )
         has_more = len(rows) > limit
         rows = rows[:limit]
@@ -175,24 +206,72 @@ class ExpenseService:
     # --- Helpers --------------------------------------------------------------------------
 
     async def _visible(self, user: User, expense_id: uuid.UUID, *, lock: bool = False) -> Expense:
-        """The expense, if this person was ever on it. Otherwise 404, so nobody can learn
-        that an expense exists by guessing IDs."""
+        """The expense, if this person was ever on it or is in its group now. Otherwise 404,
+        so nobody can learn that an expense exists by guessing IDs."""
         expense = await repo.get(self._session, expense_id, lock=lock)
-        if expense is None or not await repo.ever_involved(self._session, expense_id, user.id):
+        if expense is None:
+            raise ProblemError(404, "not-found", "Expense not found.")
+        if expense.group_id is not None and await group_repo.membership(
+            self._session, expense.group_id, user.id
+        ):
+            return expense
+        if not await repo.ever_involved(self._session, expense_id, user.id):
             raise ProblemError(404, "not-found", "Expense not found.")
         return expense
 
     async def _for_change(self, user: User, expense_id: uuid.UUID) -> tuple[Expense, RevisionRows]:
-        """Lock the expense for a change by someone in its current version."""
+        """Lock the expense for a change, checking this person may change it."""
         expense = await self._visible(user, expense_id, lock=True)
         current = await self._current(expense)
-        if user.id not in current.people():
+        if expense.group_id is None:
+            if user.id not in current.people():
+                raise ProblemError(
+                    403,
+                    "not-a-participant",
+                    "You're no longer on this expense, so you can't change it.",
+                )
+            return expense, current
+        group = await group_repo.get(self._session, expense.group_id)
+        members = await group_repo.member_ids(self._session, expense.group_id)
+        if user.id not in members:
             raise ProblemError(
-                403,
-                "not-a-participant",
-                "You're no longer on this expense, so you can't change it.",
+                403, "not-a-member", "You're no longer in this group, so you can't change this."
             )
+        _require_active(group)  # type: ignore[arg-type]
+        await self._refuse_former_members(current.people() - members)
         return expense, current
+
+    async def _writable_group(self, user: User, group_id: uuid.UUID) -> Group:
+        """The group, if this person is in it now and it isn't archived."""
+        group = await group_repo.get(self._session, group_id)
+        if group is None or not await group_repo.membership(self._session, group_id, user.id):
+            raise ProblemError(404, "not-found", "Group not found.")
+        _require_active(group)
+        return group
+
+    async def _check_members(self, group: Group, people: set[uuid.UUID]) -> None:
+        """Everyone on a group expense must be in the group now."""
+        members = await group_repo.member_ids(self._session, group.id)
+        outsiders = sorted(str(p) for p in people - members)
+        if outsiders:
+            raise ProblemError(
+                422,
+                "not-members",
+                "Everyone on a group expense must be in the group. Add them to the group first.",
+                errors=[{"user_id": o} for o in outsiders],
+            )
+
+    async def _refuse_former_members(self, left: set[uuid.UUID]) -> None:
+        if not left:
+            return
+        names = await self._names(left)
+        who = ", ".join(sorted(n or "Someone" for n in names.values()))
+        raise ProblemError(
+            409,
+            "former-member",
+            f"{who} left this group. Add them back to change this expense.",
+            errors=[{"user_id": str(u)} for u in sorted(left, key=str)],
+        )
 
     async def _current(self, expense: Expense) -> RevisionRows:
         if expense.current_revision_id is None:  # only true mid-transaction during create
@@ -297,3 +376,8 @@ def _require_name(user: User) -> None:
         raise ProblemError(
             422, "name-required", "Set your name first, so friends know who you are."
         )
+
+
+def _require_active(group: Group) -> None:
+    if group.archived_at is not None:
+        raise ProblemError(409, "group-archived", "This group is archived. Unarchive it first.")
